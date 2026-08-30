@@ -62,6 +62,35 @@
 html {
   color-scheme: light dark;
   -webkit-text-size-adjust: 100%;
+  /* Always reserve the scrollbar gutter so the centered layout never shifts
+     between a short page (Today) and a tall one (Routine with many blocks). */
+  scrollbar-gutter: stable;
+}
+@supports not (scrollbar-gutter: stable) {
+  html {
+    overflow-y: scroll;
+  }
+}
+
+/* App-styled scrollbar instead of the raw OS one */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid var(--bg);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-subtle);
 }
 
 body {

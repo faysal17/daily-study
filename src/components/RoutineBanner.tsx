@@ -39,12 +39,21 @@ function computeView(blocks: RoutineBlock[], now: Date): View {
 export function RoutineBanner({ blocks }: { blocks: RoutineBlock[] }) {
   const [now, setNow] = useState<Date | null>(null);
   const [notify, setNotify] = useState(false);
-  const [canNotify, setCanNotify] = useState(false);
+  // "unknown" until mounted; then "default" | "granted" | "denied" | "unsupported"
+  const [perm, setPerm] = useState<
+    "unknown" | "default" | "granted" | "denied" | "unsupported"
+  >("unknown");
   const firedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     setNow(new Date());
-    setCanNotify("Notification" in window);
+    if (typeof Notification === "undefined") {
+      setPerm("unsupported");
+    } else {
+      setPerm(Notification.permission as "default" | "granted" | "denied");
+      // Already granted in a past session — reminders are on, no button.
+      if (Notification.permission === "granted") setNotify(true);
+    }
     const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
   }, []);
@@ -74,11 +83,12 @@ export function RoutineBanner({ blocks }: { blocks: RoutineBlock[] }) {
 
   async function enableNotifications() {
     if (typeof Notification === "undefined") return;
-    const perm =
+    const result =
       Notification.permission === "granted"
         ? "granted"
         : await Notification.requestPermission();
-    setNotify(perm === "granted");
+    setPerm(result as "default" | "granted" | "denied");
+    setNotify(result === "granted");
   }
 
   if (blocks.length === 0) return null;
@@ -118,18 +128,18 @@ export function RoutineBanner({ blocks }: { blocks: RoutineBlock[] }) {
           <p className="mt-0.5 text-xs text-[var(--fg-muted)]">{sub}</p>
         )}
       </div>
-      {canNotify &&
-        (notify ? (
-          <span className="chip">Reminders on</span>
-        ) : (
-          <button
-            type="button"
-            onClick={enableNotifications}
-            className="btn btn-ghost btn-sm"
-          >
-            Remind me
-          </button>
-        ))}
+      {perm === "granted" && notify && (
+        <span className="chip">Reminders on</span>
+      )}
+      {perm === "default" && (
+        <button
+          type="button"
+          onClick={enableNotifications}
+          className="btn btn-ghost btn-sm"
+        >
+          Remind me
+        </button>
+      )}
     </div>
   );
 }
