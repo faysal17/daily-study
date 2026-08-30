@@ -2,9 +2,16 @@ import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 /**
- * Keeps the Supabase auth session fresh and gates the whole app behind login.
- * The cron route is excluded (it authenticates with CRON_SECRET instead).
- * (Next 16 "proxy" convention — formerly "middleware".)
+ * Runs on every request. Its ONLY job is to keep the Supabase session cookie
+ * fresh (refresh the access token when it has expired and write the new cookies
+ * onto the response).
+ *
+ * It deliberately does NOT redirect. Next strips the `rsc` / `next-router-*`
+ * headers before middleware runs, so the proxy can't tell a soft (client-side)
+ * navigation from a full one — and a redirect issued here on a soft navigation's
+ * RSC request makes the App Router fall back to a full-page reload. Auth gating
+ * lives in `requireUser()` / `requireAnon()`, called from the pages, where a
+ * Server Component `redirect()` is handled by the router without a reload.
  */
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -30,23 +37,14 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const { pathname } = request.nextUrl;
-  const onLogin = pathname === "/login";
-
-  if (!user && !onLogin) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
-  }
-
-  if (user && onLogin) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    return NextResponse.redirect(url);
+  // getSession() is local: it only hits the network when the token is actually
+  // expired (then it refreshes and setAll persists the new cookies). Signature
+  // verification isn't needed here — requireUser() does the verified check.
+  try {
+    await supabase.auth.getSession();
+  } catch {
+    // Never let a transient auth error out of the proxy — it would turn the
+    // navigation's RSC request into a non-OK response (→ full reload).
   }
 
   return response;
