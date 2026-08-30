@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { ConfirmProvider } from "@/components/confirm";
 
 export const metadata: Metadata = {
   title: "Study Tracker",
@@ -26,7 +27,9 @@ export default function RootLayout({
           <link rel="preconnect" href={supabaseUrl} crossOrigin="" />
         )}
       </head>
-      <body>{children}</body>
+      <body>
+        <ConfirmProvider>{children}</ConfirmProvider>
+      </body>
     </html>
   );
 }

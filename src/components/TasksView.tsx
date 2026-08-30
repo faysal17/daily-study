@@ -6,11 +6,13 @@ import { deleteItem, deleteTopic } from "@/app/actions/study";
 import { formatShort } from "@/lib/dates";
 import type { TaskRow } from "@/lib/types";
 import { ChevronIcon, TrashIcon } from "@/components/icons";
+import { useConfirm } from "@/components/confirm";
 
 type Filter = "all" | "active" | "done";
 
 export function TasksView({ rows }: { rows: TaskRow[] }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [filter, setFilter] = useState<Filter>("all");
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<Set<string>>(new Set());
@@ -51,15 +53,15 @@ export function TasksView({ rows }: { rows: TaskRow[] }) {
     });
   }
 
-  function removeTopic(row: TaskRow) {
-    if (
-      !confirm(
-        `Delete “${row.topicName}” and all ${
-          row.pendingCount + row.doneCount
-        } of its items? This can't be undone.`,
-      )
-    )
-      return;
+  async function removeTopic(row: TaskRow) {
+    const ok = await confirm({
+      title: `Delete “${row.topicName}”?`,
+      message: `Removes the topic and all ${
+        row.pendingCount + row.doneCount
+      } of its items. This can't be undone.`,
+      confirmLabel: "Delete topic",
+    });
+    if (!ok) return;
     setError(null);
     mark(row.topicId, true);
     startTransition(async () => {

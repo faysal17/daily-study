@@ -12,6 +12,7 @@ import { formatShort } from "@/lib/dates";
 import { PHASES, PHASE_LABEL, PHASE_SHORT } from "@/lib/phases";
 import type { MainTaskRow } from "@/lib/types";
 import { ChevronIcon, PlusIcon, TrashIcon } from "@/components/icons";
+import { useConfirm } from "@/components/confirm";
 
 type TopicOption = { id: string; name: string; mainTaskId: string | null };
 
@@ -79,6 +80,7 @@ export function MainTasksPanel({
   topicOptions: TopicOption[];
 }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [pending, start] = useTransition();
   const [creating, setCreating] = useState(false);
   const [openHistory, setOpenHistory] = useState<Set<string>>(new Set());
@@ -231,13 +233,14 @@ export function MainTasksPanel({
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (
-                        confirm(
-                          `Delete main task “${row.name}”? Its topics stay; scheduled phases are removed.`,
-                        )
-                      )
-                        run(() => deleteMainTask(row.id));
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: `Delete main task “${row.name}”?`,
+                        message:
+                          "Its topics stay; any scheduled phase and phase history are removed.",
+                        confirmLabel: "Delete main task",
+                      });
+                      if (ok) run(() => deleteMainTask(row.id));
                     }}
                     disabled={pending}
                     aria-label={`Delete ${row.name}`}

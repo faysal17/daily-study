@@ -169,6 +169,13 @@ body {
   background: color-mix(in srgb, var(--fg) 6%, transparent);
   color: var(--fg);
 }
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
 .btn-sm {
   padding: 0.4rem 0.65rem;
   font-size: 0.8rem;
@@ -210,6 +217,36 @@ body {
   border-radius: 999px;
   background: color-mix(in srgb, var(--fg) 7%, transparent);
   color: var(--fg-muted);
+}
+
+/* Confirm dialog (native <dialog>, centered popup) */
+.confirm-dialog {
+  margin: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  max-width: min(26rem, calc(100vw - 2rem));
+  color: var(--fg);
+}
+.confirm-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+}
+.confirm-dialog[open] {
+  animation: dialog-in 0.14s ease-out;
+}
+.confirm-body {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: 1.25rem;
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
 }
 
 @keyframes pulse-bg {
