@@ -2,20 +2,18 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { RoutineBlock } from "@/lib/types";
-
-const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+import { ClockIcon } from "@/components/icons";
 
 function toMinutes(t: string): number {
   const [h, m] = t.split(":").map(Number);
   return h * 60 + (m || 0);
 }
-
 function hhmm(t: string): string {
   return t.slice(0, 5);
 }
 
 type View =
-  | { kind: "now"; block: RoutineBlock }
+  | { kind: "now"; block: RoutineBlock; endsIn: number }
   | { kind: "next"; block: RoutineBlock; at: string }
   | { kind: "idle" };
 
@@ -28,7 +26,7 @@ function computeView(blocks: RoutineBlock[], now: Date): View {
 
   for (const b of todays) {
     if (mins >= toMinutes(b.start_time) && mins < toMinutes(b.end_time)) {
-      return { kind: "now", block: b };
+      return { kind: "now", block: b, endsIn: toMinutes(b.end_time) - mins };
     }
   }
   const upcoming = todays.find((b) => toMinutes(b.start_time) > mins);
@@ -41,10 +39,12 @@ function computeView(blocks: RoutineBlock[], now: Date): View {
 export function RoutineBanner({ blocks }: { blocks: RoutineBlock[] }) {
   const [now, setNow] = useState<Date | null>(null);
   const [notify, setNotify] = useState(false);
+  const [canNotify, setCanNotify] = useState(false);
   const firedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     setNow(new Date());
+    setCanNotify("Notification" in window);
     const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
   }, []);
@@ -54,7 +54,6 @@ export function RoutineBanner({ blocks }: { blocks: RoutineBlock[] }) {
     [blocks, now],
   );
 
-  // Best-effort browser notification at a block's start time, while the tab is open.
   useEffect(() => {
     if (!notify || !now || typeof Notification === "undefined") return;
     if (Notification.permission !== "granted") return;
@@ -84,44 +83,53 @@ export function RoutineBanner({ blocks }: { blocks: RoutineBlock[] }) {
 
   if (blocks.length === 0) return null;
 
-  let text = "Nothing scheduled for the rest of today.";
+  let primary = "Nothing scheduled for the rest of today.";
+  let sub: string | null = null;
+  let live = false;
   if (view?.kind === "now") {
-    text = `Now: ${view.block.label} (${hhmm(view.block.start_time)}–${hhmm(
-      view.block.end_time,
-    )})`;
+    primary = view.block.label;
+    sub = `Now · ends ${hhmm(view.block.end_time)} (${view.endsIn} min left)`;
+    live = true;
   } else if (view?.kind === "next") {
-    text = `Next: ${view.block.label} at ${view.at}`;
+    primary = view.block.label;
+    sub = `Next · starts ${view.at}`;
   }
 
   return (
-    <div className="mb-4 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm">
-      <div className="flex items-center justify-between gap-3">
-        <span
-          className={
-            view?.kind === "now" ? "font-medium" : "text-[var(--muted)]"
-          }
-        >
-          {view ? text : " "}
-        </span>
-        {typeof window !== "undefined" &&
-          "Notification" in window &&
-          !notify && (
-            <button
-              type="button"
-              onClick={enableNotifications}
-              className="shrink-0 text-xs text-[var(--muted)] underline hover:text-[var(--fg)]"
-            >
-              Enable reminders
-            </button>
-          )}
-        {notify && (
-          <span className="shrink-0 text-xs text-[var(--muted)]">
-            Reminders on
-          </span>
+    <div
+      className={
+        "card mb-5 flex items-center gap-3 px-4 py-3 " +
+        (live ? "border-[var(--accent)]" : "")
+      }
+    >
+      <span
+        className={
+          "grid h-9 w-9 shrink-0 place-items-center rounded-lg " +
+          (live
+            ? "bg-[var(--accent)] text-[var(--accent-fg)]"
+            : "bg-[var(--accent-soft)] text-[var(--accent)]")
+        }
+      >
+        <ClockIcon width={17} height={17} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{primary}</p>
+        {sub && (
+          <p className="mt-0.5 text-xs text-[var(--fg-muted)]">{sub}</p>
         )}
       </div>
+      {canNotify &&
+        (notify ? (
+          <span className="chip">Reminders on</span>
+        ) : (
+          <button
+            type="button"
+            onClick={enableNotifications}
+            className="btn btn-ghost btn-sm"
+          >
+            Remind me
+          </button>
+        ))}
     </div>
   );
 }
-
-export { DOW };

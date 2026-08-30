@@ -9,6 +9,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  themeColor: "#4f46e5",
 };
 
 export default function RootLayout({
@@ -16,8 +17,15 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+
   return (
     <html lang="en">
+      <head>
+        {supabaseUrl && (
+          <link rel="preconnect" href={supabaseUrl} crossOrigin="" />
+        )}
+      </head>
       <body>{children}</body>
     </html>
   );

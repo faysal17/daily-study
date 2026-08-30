@@ -32,6 +32,7 @@ export interface StudyItem {
   status: ItemStatus;
   rung: number; // 0..5
   grade: Grade | null;
+  routine_block_id: string | null;
   created_at: string;
   last_reviewed_at: string | null;
 }
@@ -46,4 +47,34 @@ export interface DueItem {
   scheduledDate: string;
   reviewCount: number;
   overdue: boolean;
+  routineBlockId: string | null;
+}
+
+/** Today's items bucketed under a routine block (or "Anytime" when null). */
+export interface TodayGroup {
+  key: string;
+  label: string;
+  timeRange: string | null; // "06:00 – 08:00"
+  startMinutes: number; // for ordering; Anytime sorts last
+  items: DueItem[];
+}
+
+/** One row on the Tasks screen: a topic with its scheduling summary. */
+export interface TaskRow {
+  topicId: string;
+  topicName: string;
+  subject: string | null;
+  createdAt: string;
+  pendingCount: number;
+  doneCount: number;
+  nextDate: string | null;
+  currentRung: number | null;
+  items: {
+    id: string;
+    scheduledDate: string;
+    status: ItemStatus;
+    rung: number;
+    grade: Grade | null;
+    routineLabel: string | null;
+  }[];
 }

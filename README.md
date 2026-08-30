@@ -10,9 +10,10 @@ Stack: Next.js (App Router) · Supabase (Postgres + Auth) · Vercel (hosting + C
 
 | Route      | What it does |
 |------------|--------------|
-| `/`        | **Today** — items due today. Tick one → inline Good/Shaky/Fail → it disappears and the next occurrence is scheduled. On Saturdays it also shows overdue items rolled forward from the week. Top banner shows your current/next routine block. |
-| `/add`     | **Add / Assign** — put an existing or brand-new topic on a date (defaults to today). No auto-suggestions. |
-| `/routine` | **Routine** — editable list of daily time blocks (label + start/end + weekdays + active). Reference only. |
+| `/`        | **Today** — items due today, grouped under the routine time block they're assigned to (plus an "Anytime" group). Tick one → inline Good/Shaky/Fail → it disappears and the next occurrence is scheduled (keeping the same routine block). On Saturdays it also shows overdue items rolled forward from the week. Top banner shows your current/next routine block. |
+| `/tasks`   | **Tasks** — every topic with its scheduling summary (scheduled / done counts, next date, current rung). Expand a topic to see all its items; delete a single item or a whole topic. |
+| `/add`     | **Add / Assign** — put an existing or brand-new topic on a date (defaults to today) and optionally into a routine block. No auto-suggestions. |
+| `/routine` | **Routine** — editable list of daily time blocks (label + start/end + weekdays + active). |
 
 ## Spaced-repetition ladder
 
@@ -41,7 +42,8 @@ once that Saturday arrives.
 ### 1. Supabase
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. SQL Editor → run [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql).
+2. SQL Editor → run the migrations in [`supabase/migrations/`](supabase/migrations/) in order
+   (`0001_init.sql`, then `0002_routine_link.sql`).
 3. Authentication → Users → **Add user** → create your single login (email + password).
    Authentication → Providers → Email: turn **Confirm email** off (or confirm the user manually).
 4. Project Settings → API → copy the **Project URL**, the **anon** key, and the **service_role** key.

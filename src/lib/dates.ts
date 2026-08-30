@@ -51,6 +51,17 @@ export function comingSaturdayISO(iso: ISODate): ISODate {
   return addDaysISO(iso, delta);
 }
 
+/** "HH:MM:SS" or "HH:MM" -> "HH:MM". */
+export function hhmm(t: string): string {
+  return t.slice(0, 5);
+}
+
+/** Minutes since midnight for an "HH:MM[:SS]" string. */
+export function timeToMinutes(t: string): number {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + (m || 0);
+}
+
 /** Human label like "Sat, 30 Aug". */
 export function formatShort(iso: ISODate): string {
   const [y, m, d] = iso.split("-").map(Number);

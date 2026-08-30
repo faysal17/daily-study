@@ -9,40 +9,50 @@ export default function LoginPage() {
   const [state, formAction, pending] = useActionState(signIn, initial);
 
   return (
-    <main className="container-narrow flex min-h-dvh flex-col justify-center pb-24">
-      <h1 className="text-xl font-semibold">Study Tracker</h1>
-      <p className="mb-6 text-sm text-[var(--muted)]">Sign in to continue.</p>
+    <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center px-5 pb-24">
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight">Study Tracker</h1>
+        <p className="mt-1 text-sm text-[var(--fg-muted)]">
+          Sign in to continue.
+        </p>
+      </div>
 
-      <form action={formAction} className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1 text-sm">
-          Email
+      <form action={formAction} className="card flex flex-col gap-4 p-5">
+        <div>
+          <label className="field-label" htmlFor="email">
+            Email
+          </label>
           <input
+            id="email"
             type="email"
             name="email"
             autoComplete="username"
             required
-            className="rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2"
+            className="input"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Password
+        </div>
+        <div>
+          <label className="field-label" htmlFor="password">
+            Password
+          </label>
           <input
+            id="password"
             type="password"
             name="password"
             autoComplete="current-password"
             required
-            className="rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2"
+            className="input"
           />
-        </label>
+        </div>
 
         {state.error && (
-          <p className="text-sm text-red-600">{state.error}</p>
+          <p className="text-sm text-[var(--fail)]">{state.error}</p>
         )}
 
         <button
           type="submit"
           disabled={pending}
-          className="mt-1 rounded-md bg-[var(--accent)] px-3 py-2 text-sm text-[var(--bg)] disabled:opacity-60"
+          className="btn btn-primary w-full"
         >
           {pending ? "Signing in…" : "Sign in"}
         </button>

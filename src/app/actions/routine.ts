@@ -35,6 +35,7 @@ export async function createBlock(formData: FormData): Promise<ActionResult> {
 
   revalidatePath("/routine");
   revalidatePath("/");
+  revalidatePath("/add");
   return { ok: true };
 }
 
@@ -66,6 +67,7 @@ export async function updateBlock(formData: FormData): Promise<ActionResult> {
 
   revalidatePath("/routine");
   revalidatePath("/");
+  revalidatePath("/add");
   return { ok: true };
 }
 
@@ -79,5 +81,6 @@ export async function deleteBlock(formData: FormData): Promise<ActionResult> {
 
   revalidatePath("/routine");
   revalidatePath("/");
+  revalidatePath("/add");
   return { ok: true };
 }

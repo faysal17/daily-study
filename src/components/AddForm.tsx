@@ -7,9 +7,11 @@ import type { Topic } from "@/lib/types";
 
 export function AddForm({
   topics,
+  blocks,
   today,
 }: {
   topics: Topic[];
+  blocks: { id: string; label: string }[];
   today: string;
 }) {
   const router = useRouter();
@@ -20,6 +22,7 @@ export function AddForm({
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
   const [date, setDate] = useState(today);
+  const [blockId, setBlockId] = useState("");
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -32,6 +35,7 @@ export function AddForm({
         newTopicName: mode === "new" ? name : undefined,
         subject: mode === "new" ? subject : undefined,
         date,
+        routineBlockId: blockId || undefined,
       });
       if (res.ok) {
         setNote({ ok: true, text: res.message ?? "Assigned." });
@@ -44,40 +48,41 @@ export function AddForm({
     });
   }
 
-  const inputCls =
-    "rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm";
+  const Segmented = (
+    <div className="inline-flex rounded-lg border border-[var(--border-strong)] p-0.5 text-sm">
+      {(["existing", "new"] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() => setMode(m)}
+          disabled={m === "existing" && topics.length === 0}
+          className={
+            "rounded-[7px] px-3 py-1.5 font-medium transition-colors disabled:opacity-40 " +
+            (mode === m
+              ? "bg-[var(--accent)] text-[var(--accent-fg)]"
+              : "text-[var(--fg-muted)] hover:text-[var(--fg)]")
+          }
+        >
+          {m === "existing" ? "Existing topic" : "New topic"}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-4">
-      <div className="flex gap-4 text-sm">
-        <label className="flex items-center gap-2">
-          <input
-            type="radio"
-            name="mode"
-            checked={mode === "existing"}
-            onChange={() => setMode("existing")}
-            disabled={topics.length === 0}
-          />
-          Existing topic
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="radio"
-            name="mode"
-            checked={mode === "new"}
-            onChange={() => setMode("new")}
-          />
-          New topic
-        </label>
-      </div>
+    <form onSubmit={submit} className="card flex flex-col gap-4 p-4">
+      {Segmented}
 
       {mode === "existing" ? (
-        <label className="flex flex-col gap-1 text-sm">
-          Topic
+        <div>
+          <label className="field-label" htmlFor="topic">
+            Topic
+          </label>
           <select
+            id="topic"
             value={topicId}
             onChange={(e) => setTopicId(e.target.value)}
-            className={inputCls}
+            className="input"
           >
             {topics.map((t) => (
               <option key={t.id} value={t.id}>
@@ -86,46 +91,76 @@ export function AddForm({
               </option>
             ))}
           </select>
-        </label>
+        </div>
       ) : (
         <>
-          <label className="flex flex-col gap-1 text-sm">
-            Topic name
+          <div>
+            <label className="field-label" htmlFor="name">
+              Topic name
+            </label>
             <input
+              id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className={inputCls}
-              placeholder="e.g. Bangladesh Liberation War — phases"
+              className="input"
+              placeholder="e.g. Liberation War — phases"
               required
             />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Subject <span className="text-[var(--muted)]">(optional)</span>
+          </div>
+          <div>
+            <label className="field-label" htmlFor="subject">
+              Subject <span className="text-[var(--fg-subtle)]">(optional)</span>
+            </label>
             <input
+              id="subject"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              className={inputCls}
+              className="input"
               placeholder="e.g. Bangladesh Affairs"
             />
-          </label>
+          </div>
         </>
       )}
 
-      <label className="flex flex-col gap-1 text-sm">
-        Study on
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className={inputCls}
-          required
-        />
-      </label>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="field-label" htmlFor="date">
+            Study on
+          </label>
+          <input
+            id="date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="input"
+            required
+          />
+        </div>
+        <div>
+          <label className="field-label" htmlFor="block">
+            Routine block
+          </label>
+          <select
+            id="block"
+            value={blockId}
+            onChange={(e) => setBlockId(e.target.value)}
+            className="input"
+          >
+            <option value="">Anytime</option>
+            {blocks.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       {note && (
         <p
           className={
-            "text-sm " + (note.ok ? "text-green-600" : "text-red-600")
+            "text-sm " +
+            (note.ok ? "text-[var(--good)]" : "text-[var(--fail)]")
           }
         >
           {note.text}
@@ -135,7 +170,7 @@ export function AddForm({
       <button
         type="submit"
         disabled={pending}
-        className="self-start rounded-md bg-[var(--accent)] px-4 py-2 text-sm text-[var(--bg)] disabled:opacity-60"
+        className="btn btn-primary self-start"
       >
         {pending ? "Saving…" : "Assign"}
       </button>

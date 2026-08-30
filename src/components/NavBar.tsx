@@ -1,36 +1,68 @@
 import Link from "next/link";
 import { signOut } from "@/app/actions/auth";
+import { SunIcon, ListIcon, PlusIcon, ClockIcon } from "@/components/icons";
 
-export function NavBar({ active }: { active: "today" | "add" | "routine" }) {
-  const link = (href: string, key: string, label: string) => (
-    <Link
-      href={href}
-      className={
-        "px-3 py-1.5 rounded-md text-sm " +
-        (active === key
-          ? "bg-[var(--accent)] text-[var(--bg)]"
-          : "text-[var(--muted)] hover:text-[var(--fg)]")
-      }
-    >
-      {label}
-    </Link>
-  );
+type Tab = "today" | "tasks" | "add" | "routine";
 
+const TABS: { key: Tab; href: string; label: string; Icon: typeof SunIcon }[] = [
+  { key: "today", href: "/", label: "Today", Icon: SunIcon },
+  { key: "tasks", href: "/tasks", label: "Tasks", Icon: ListIcon },
+  { key: "add", href: "/add", label: "Add", Icon: PlusIcon },
+  { key: "routine", href: "/routine", label: "Routine", Icon: ClockIcon },
+];
+
+export function NavBar({ active }: { active: Tab }) {
   return (
-    <nav className="flex items-center justify-between gap-2 py-4">
-      <div className="flex items-center gap-1">
-        {link("/", "today", "Today")}
-        {link("/add", "add", "Add")}
-        {link("/routine", "routine", "Routine")}
+    <header className="sticky top-0 z-20 -mx-[1.1rem] mb-5 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] px-[1.1rem] backdrop-blur">
+      <div className="mx-auto flex max-w-[40rem] items-center justify-between py-3">
+        <span className="text-[0.95rem] font-semibold tracking-tight">
+          Study Tracker
+        </span>
+        <form action={signOut}>
+          <button type="submit" className="btn btn-ghost btn-sm">
+            Sign out
+          </button>
+        </form>
       </div>
-      <form action={signOut}>
-        <button
-          type="submit"
-          className="text-xs text-[var(--muted)] hover:text-[var(--fg)]"
-        >
-          Sign out
-        </button>
-      </form>
-    </nav>
+
+      <nav className="mx-auto flex max-w-[40rem] gap-1 overflow-x-auto pb-2">
+        {TABS.map(({ key, href, label, Icon }) => {
+          const on = key === active;
+          return (
+            <Link
+              key={key}
+              href={href}
+              prefetch
+              className={
+                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors " +
+                (on
+                  ? "bg-[var(--accent)] text-[var(--accent-fg)]"
+                  : "text-[var(--fg-muted)] hover:bg-[color-mix(in_srgb,var(--fg)_7%,transparent)] hover:text-[var(--fg)]")
+              }
+            >
+              <Icon width={15} height={15} />
+              {label}
+            </Link>
+          );
+        })}
+      </nav>
+    </header>
+  );
+}
+
+export function PageHeader({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <div className="mb-5">
+      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+      {subtitle && (
+        <p className="mt-1 text-sm text-[var(--fg-muted)]">{subtitle}</p>
+      )}
+    </div>
   );
 }

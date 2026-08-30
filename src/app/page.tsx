@@ -1,18 +1,27 @@
-import { NavBar } from "@/components/NavBar";
+import { NavBar, PageHeader } from "@/components/NavBar";
 import { TodayList } from "@/components/TodayList";
 import { RoutineBanner } from "@/components/RoutineBanner";
 import { createClient } from "@/lib/supabase/server";
-import { formatShort, isSaturday, todayISO } from "@/lib/dates";
-import type { DueItem, RoutineBlock } from "@/lib/types";
+import {
+  formatShort,
+  hhmm,
+  isSaturday,
+  timeToMinutes,
+  todayISO,
+  weekdayOf,
+} from "@/lib/dates";
+import type { DueItem, RoutineBlock, TodayGroup } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
+type JoinedTopic = { name: string; subject: string | null };
 type Row = {
   id: string;
   topic_id: string;
   scheduled_date: string;
   rung: number;
-  topics: { name: string; subject: string | null } | { name: string; subject: string | null }[] | null;
+  routine_block_id: string | null;
+  topics: JoinedTopic | JoinedTopic[] | null;
 };
 
 function topicOf(row: Row) {
@@ -20,26 +29,38 @@ function topicOf(row: Row) {
   return { name: t?.name ?? "(untitled topic)", subject: t?.subject ?? null };
 }
 
+const ANYTIME_KEY = "anytime";
+
 export default async function TodayPage() {
   const supabase = await createClient();
   const today = todayISO();
   const saturday = isSaturday(today);
+  const weekday = weekdayOf(today);
 
-  let query = supabase
+  const itemsQuery = supabase
     .from("study_items")
-    .select("id, topic_id, scheduled_date, rung, topics(name, subject)")
+    .select(
+      "id, topic_id, scheduled_date, rung, routine_block_id, topics(name, subject)",
+    )
     .eq("status", "pending")
     .order("scheduled_date", { ascending: true });
 
-  // Today only ever shows items scheduled for today — plus, on Saturdays, any
-  // overdue items the rollover job hasn't swept yet.
-  query = saturday
-    ? query.lte("scheduled_date", today)
-    : query.eq("scheduled_date", today);
+  const [{ data: rows, error }, { data: blockRows }] = await Promise.all([
+    saturday
+      ? itemsQuery.lte("scheduled_date", today)
+      : itemsQuery.eq("scheduled_date", today),
+    supabase
+      .from("routine_blocks")
+      .select("*")
+      .eq("active", true)
+      .order("start_time", { ascending: true }),
+  ]);
 
-  const { data: rows, error } = await query;
+  const blocks = (blockRows ?? []) as RoutineBlock[];
+  const blockById = new Map(blocks.map((b) => [b.id, b]));
 
-  const items: DueItem[] = [];
+  // Review counts for the topics that show up today.
+  const counts = new Map<string, number>();
   if (rows && rows.length > 0) {
     const topicIds = [...new Set(rows.map((r) => (r as Row).topic_id))];
     const { data: doneRows } = await supabase
@@ -47,53 +68,83 @@ export default async function TodayPage() {
       .select("topic_id")
       .eq("status", "done")
       .in("topic_id", topicIds);
-
-    const counts = new Map<string, number>();
     for (const d of doneRows ?? []) {
       const k = (d as { topic_id: string }).topic_id;
       counts.set(k, (counts.get(k) ?? 0) + 1);
     }
-
-    for (const raw of rows as Row[]) {
-      const t = topicOf(raw);
-      items.push({
-        id: raw.id,
-        topicId: raw.topic_id,
-        topicName: t.name,
-        subject: t.subject,
-        rung: raw.rung,
-        scheduledDate: raw.scheduled_date,
-        reviewCount: counts.get(raw.topic_id) ?? 0,
-        overdue: raw.scheduled_date < today,
-      });
-    }
   }
 
-  const { data: blockRows } = await supabase
-    .from("routine_blocks")
-    .select("*")
-    .eq("active", true)
-    .order("start_time", { ascending: true });
+  const dueByBlock = new Map<string, DueItem[]>();
+  for (const raw of (rows ?? []) as Row[]) {
+    const t = topicOf(raw);
+    const due: DueItem = {
+      id: raw.id,
+      topicId: raw.topic_id,
+      topicName: t.name,
+      subject: t.subject,
+      rung: raw.rung,
+      scheduledDate: raw.scheduled_date,
+      reviewCount: counts.get(raw.topic_id) ?? 0,
+      overdue: raw.scheduled_date < today,
+      routineBlockId: raw.routine_block_id,
+    };
+    // Bucket under its block only if that block runs today; otherwise "Anytime".
+    const key =
+      raw.routine_block_id && blockById.has(raw.routine_block_id)
+        ? raw.routine_block_id
+        : ANYTIME_KEY;
+    const arr = dueByBlock.get(key) ?? [];
+    arr.push(due);
+    dueByBlock.set(key, arr);
+  }
 
-  const blocks = (blockRows ?? []) as RoutineBlock[];
+  const todaysBlocks = blocks
+    .filter((b) => b.days_of_week?.includes(weekday))
+    .sort((a, b) => timeToMinutes(a.start_time) - timeToMinutes(b.start_time));
+
+  const groups: TodayGroup[] = todaysBlocks.map((b) => ({
+    key: b.id,
+    label: b.label,
+    timeRange: `${hhmm(b.start_time)} – ${hhmm(b.end_time)}`,
+    startMinutes: timeToMinutes(b.start_time),
+    items: dueByBlock.get(b.id) ?? [],
+  }));
+
+  const anytime = dueByBlock.get(ANYTIME_KEY) ?? [];
+  if (anytime.length > 0) {
+    groups.push({
+      key: ANYTIME_KEY,
+      label: "Anytime",
+      timeRange: null,
+      startMinutes: Number.MAX_SAFE_INTEGER,
+      items: anytime,
+    });
+  }
+
+  const totalDue = (rows ?? []).length;
 
   return (
-    <main className="container-narrow pb-16">
+    <main className="page">
       <NavBar active="today" />
-
-      <header className="mt-2 mb-4">
-        <h1 className="text-xl font-semibold">Today</h1>
-        <p className="text-sm text-[var(--muted)]">{formatShort(today)}</p>
-      </header>
+      <PageHeader
+        title="Today"
+        subtitle={`${formatShort(today)}${
+          totalDue > 0 ? ` · ${totalDue} to review` : ""
+        }`}
+      />
 
       <RoutineBanner blocks={blocks} />
 
       {error ? (
-        <p className="mt-6 text-sm text-red-600">
+        <p className="mt-6 text-sm text-[var(--fail)]">
           Could not load items: {error.message}
         </p>
       ) : (
-        <TodayList initialItems={items} isSaturday={saturday} />
+        <TodayList
+          groups={groups}
+          isSaturday={saturday}
+          hasRoutine={todaysBlocks.length > 0}
+        />
       )}
     </main>
   );

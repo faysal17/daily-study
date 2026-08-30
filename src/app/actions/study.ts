@@ -6,9 +6,15 @@ import { intervalDays, nextRung, type Grade } from "@/lib/ladder";
 import { addDaysISO, todayISO } from "@/lib/dates";
 import type { ActionResult } from "@/lib/types";
 
+function revalidateAll() {
+  revalidatePath("/");
+  revalidatePath("/add");
+  revalidatePath("/tasks");
+}
+
 /**
- * Assign a topic to a date. Either an existing `topicId`, or a brand-new topic
- * created on the fly from `newTopicName` (+ optional `subject`).
+ * Assign a topic to a date, optionally into a routine time block.
+ * Either an existing `topicId`, or a new topic from `newTopicName` (+ `subject`).
  * The new study_item starts at rung 0.
  */
 export async function assignTopic(input: {
@@ -16,10 +22,12 @@ export async function assignTopic(input: {
   newTopicName?: string;
   subject?: string;
   date: string; // "YYYY-MM-DD"
+  routineBlockId?: string;
 }): Promise<ActionResult> {
   const supabase = await createClient();
 
   const date = (input.date || "").trim() || todayISO();
+  const routineBlockId = input.routineBlockId?.trim() || null;
   let topicId = input.topicId?.trim();
   let topicName = "";
 
@@ -50,19 +58,19 @@ export async function assignTopic(input: {
     scheduled_date: date,
     status: "pending",
     rung: 0,
+    routine_block_id: routineBlockId,
   });
 
   if (insErr) return { ok: false, error: insErr.message };
 
-  revalidatePath("/");
-  revalidatePath("/add");
-  return { ok: true, message: `Assigned "${topicName}" for ${date}.` };
+  revalidateAll();
+  return { ok: true, message: `Assigned “${topicName}” for ${date}.` };
 }
 
 /**
  * Grade a due item. Marks it done, records the grade, and schedules the next
- * occurrence for the same topic at the new rung's interval. History is kept —
- * the graded row stays in the table as the review log.
+ * occurrence for the same topic at the new rung's interval — keeping the same
+ * routine block. History is kept: the graded row stays as the review log.
  */
 export async function gradeItem(
   itemId: string,
@@ -72,7 +80,7 @@ export async function gradeItem(
 
   const { data: item, error } = await supabase
     .from("study_items")
-    .select("id, topic_id, rung, status")
+    .select("id, topic_id, rung, status, routine_block_id")
     .eq("id", itemId)
     .single();
 
@@ -95,7 +103,7 @@ export async function gradeItem(
       last_reviewed_at: new Date().toISOString(),
     })
     .eq("id", item.id)
-    .eq("status", "pending"); // guard against double-grading
+    .eq("status", "pending");
 
   if (upErr) return { ok: false, error: upErr.message };
 
@@ -104,10 +112,32 @@ export async function gradeItem(
     scheduled_date: nextDate,
     status: "pending",
     rung: newRung,
+    routine_block_id: item.routine_block_id,
   });
 
   if (insErr) return { ok: false, error: insErr.message };
 
-  revalidatePath("/");
+  revalidateAll();
   return { ok: true, message: `Next review: ${nextDate} (R${newRung}).` };
+}
+
+/** Delete a single scheduled/finished item. */
+export async function deleteItem(itemId: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("study_items")
+    .delete()
+    .eq("id", itemId);
+  if (error) return { ok: false, error: error.message };
+  revalidateAll();
+  return { ok: true };
+}
+
+/** Delete a topic and every item (history included) for it. */
+export async function deleteTopic(topicId: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("topics").delete().eq("id", topicId);
+  if (error) return { ok: false, error: error.message };
+  revalidateAll();
+  return { ok: true };
 }
