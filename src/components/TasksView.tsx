@@ -131,6 +131,11 @@ export function TasksView({ rows }: { rows: TaskRow[] }) {
                   </span>
                   <span className="mt-1 flex flex-wrap items-center gap-1.5">
                     {row.subject && <span className="chip">{row.subject}</span>}
+                    {row.mainTaskName && (
+                      <span className="chip text-[var(--accent)]">
+                        {row.mainTaskName}
+                      </span>
+                    )}
                     {row.currentRung !== null && (
                       <span className="chip">R{row.currentRung}</span>
                     )}

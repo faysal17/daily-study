@@ -1,8 +1,15 @@
 import { NavBar, PageHeader } from "@/components/NavBar";
 import { TasksView } from "@/components/TasksView";
+import { MainTasksPanel } from "@/components/MainTasksPanel";
 import { createClient } from "@/lib/supabase/server";
 import type { Grade } from "@/lib/ladder";
-import type { ItemStatus, TaskRow, Topic } from "@/lib/types";
+import type { Phase } from "@/lib/phases";
+import type {
+  ItemStatus,
+  MainTaskRow,
+  TaskRow,
+  Topic,
+} from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -15,50 +22,75 @@ type ItemRow = {
   grade: Grade | null;
   routine_block_id: string | null;
 };
+type MtRow = { id: string; name: string; subject: string | null; phase: Phase; rung: number };
+type TopicRow = Topic & { main_task_id: string | null };
+type PhaseItemRow = {
+  id: string;
+  main_task_id: string;
+  phase: Phase;
+  scheduled_date: string;
+  status: ItemStatus;
+  grade: Grade | null;
+};
 
 export default async function TasksPage() {
   const supabase = await createClient();
 
-  const [{ data: topicData }, { data: itemData }, { data: blockData }] =
-    await Promise.all([
-      supabase
-        .from("topics")
-        .select("id, name, subject, created_at")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("study_items")
-        .select(
-          "id, topic_id, scheduled_date, status, rung, grade, routine_block_id",
-        )
-        .order("scheduled_date", { ascending: true }),
-      supabase.from("routine_blocks").select("id, label"),
-    ]);
+  const [
+    { data: topicData },
+    { data: itemData },
+    { data: blockData },
+    { data: mtData },
+    { data: mtItemData },
+  ] = await Promise.all([
+    supabase
+      .from("topics")
+      .select("id, name, subject, created_at, main_task_id")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("study_items")
+      .select(
+        "id, topic_id, scheduled_date, status, rung, grade, routine_block_id",
+      )
+      .order("scheduled_date", { ascending: true }),
+    supabase.from("routine_blocks").select("id, label"),
+    supabase
+      .from("main_tasks")
+      .select("id, name, subject, phase, rung")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("main_task_items")
+      .select("id, main_task_id, phase, scheduled_date, status, grade")
+      .order("scheduled_date", { ascending: true }),
+  ]);
 
-  const topics = (topicData ?? []) as Topic[];
+  const topics = (topicData ?? []) as TopicRow[];
   const items = (itemData ?? []) as ItemRow[];
-  const blockLabel = new Map(
-    ((blockData ?? []) as { id: string; label: string }[]).map((b) => [
-      b.id,
-      b.label,
-    ]),
-  );
+  const mts = (mtData ?? []) as MtRow[];
+  const mtItems = (mtItemData ?? []) as PhaseItemRow[];
+  void blockData;
 
+  const mtNameById = new Map(mts.map((m) => [m.id, m.name]));
+
+  // ---- Topic rows ----
   const byTopic = new Map<string, ItemRow[]>();
   for (const it of items) {
     const arr = byTopic.get(it.topic_id) ?? [];
     arr.push(it);
     byTopic.set(it.topic_id, arr);
   }
-
-  const rows: TaskRow[] = topics.map((t) => {
+  const topicRows: TaskRow[] = topics.map((t) => {
     const list = byTopic.get(t.id) ?? [];
     const pending = list.filter((i) => i.status === "pending");
     const done = list.filter((i) => i.status === "done");
-    const nextPending = pending[0] ?? null; // already sorted by date asc
+    const nextPending = pending[0] ?? null;
     return {
       topicId: t.id,
       topicName: t.name,
       subject: t.subject,
+      mainTaskName: t.main_task_id
+        ? mtNameById.get(t.main_task_id) ?? null
+        : null,
       createdAt: t.created_at,
       pendingCount: pending.length,
       doneCount: done.length,
@@ -72,23 +104,72 @@ export default async function TasksPage() {
         status: i.status,
         rung: i.rung,
         grade: i.grade,
-        routineLabel: i.routine_block_id
-          ? blockLabel.get(i.routine_block_id) ?? null
-          : null,
+        routineLabel: null,
       })),
     };
   });
+
+  // ---- Main task rows ----
+  const topicsByMt = new Map<string, string[]>();
+  for (const t of topics) {
+    if (!t.main_task_id) continue;
+    const arr = topicsByMt.get(t.main_task_id) ?? [];
+    arr.push(t.name);
+    topicsByMt.set(t.main_task_id, arr);
+  }
+  const itemsByMt = new Map<string, PhaseItemRow[]>();
+  for (const it of mtItems) {
+    const arr = itemsByMt.get(it.main_task_id) ?? [];
+    arr.push(it);
+    itemsByMt.set(it.main_task_id, arr);
+  }
+  const mainTaskRows: MainTaskRow[] = mts.map((m) => {
+    const list = itemsByMt.get(m.id) ?? [];
+    const open = list.find((i) => i.status === "pending") ?? null;
+    return {
+      id: m.id,
+      name: m.name,
+      subject: m.subject,
+      phase: m.phase,
+      rung: m.rung,
+      topicNames: topicsByMt.get(m.id) ?? [],
+      pendingItem: open
+        ? { id: open.id, phase: open.phase, scheduledDate: open.scheduled_date }
+        : null,
+      history: list
+        .filter((i) => i.status === "done")
+        .map((i) => ({
+          id: i.id,
+          phase: i.phase,
+          scheduledDate: i.scheduled_date,
+          status: i.status,
+          grade: i.grade,
+        })),
+    };
+  });
+
+  const allTopicOptions = topics.map((t) => ({
+    id: t.id,
+    name: t.name,
+    mainTaskId: t.main_task_id,
+  }));
 
   return (
     <main className="page">
       <NavBar active="tasks" />
       <PageHeader
         title="Tasks"
-        subtitle={`${rows.length} topic${rows.length === 1 ? "" : "s"} · ${
-          items.filter((i) => i.status === "pending").length
-        } scheduled`}
+        subtitle={`${mts.length} main task${
+          mts.length === 1 ? "" : "s"
+        } · ${topics.length} topic${topics.length === 1 ? "" : "s"}`}
       />
-      <TasksView rows={rows} />
+
+      <MainTasksPanel rows={mainTaskRows} topicOptions={allTopicOptions} />
+
+      <h2 className="mt-8 mb-3 px-1 text-sm font-semibold text-[var(--fg-muted)]">
+        Topics
+      </h2>
+      <TasksView rows={topicRows} />
     </main>
   );
 }

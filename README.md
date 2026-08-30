@@ -10,10 +10,28 @@ Stack: Next.js (App Router) · Supabase (Postgres + Auth) · Vercel (hosting + C
 
 | Route      | What it does |
 |------------|--------------|
-| `/`        | **Today** — items due today, grouped under the routine time block they're assigned to (plus an "Anytime" group). Tick one → inline Good/Shaky/Fail → it disappears and the next occurrence is scheduled (keeping the same routine block). On Saturdays it also shows overdue items rolled forward from the week. Top banner shows your current/next routine block. |
-| `/tasks`   | **Tasks** — every topic with its scheduling summary (scheduled / done counts, next date, current rung). Expand a topic to see all its items; delete a single item or a whole topic. |
-| `/add`     | **Add / Assign** — put an existing or brand-new topic on a date (defaults to today) and optionally into a routine block. No auto-suggestions. |
+| `/`        | **Today** — topics and main-task phases due today, grouped under the routine time block they're assigned to (plus "Anytime"). Grade a topic Good/Shaky/Fail; finish a phase (Skim/Notes just "done"; Exam/Recall take a grade). Item disappears and the next occurrence is scheduled. On Saturdays also shows overdue items rolled forward from the week. Top banner shows your current/next routine block. |
+| `/tasks`   | **Tasks** — **Main tasks**: create a bundle (name + subject + topics), see its phase track (Skim → Notes → Exam → Recall), edit its topics, unschedule a pending phase, delete it (topics survive). **Topics**: every topic with its scheduling summary; expand to see items; delete an item or a whole topic. |
+| `/add`     | **Add / Assign** — *Topic*: put an existing/new topic on a date + optional routine block. *Main task phase*: schedule the selected main task's current phase. No auto-suggestions. |
 | `/routine` | **Routine** — editable list of daily time blocks (label + start/end + weekdays + active). |
+
+## Main tasks (Skim → Notes → Exam → Recall)
+
+A **main task** bundles related topics and moves through a fixed flow, one phase
+at a time for the whole bundle:
+
+1. **Skim**, then **Notes** — scheduled by you, ticked done (no grade). Finishing
+   one unlocks the next.
+2. **Exam** — scheduled by you, finished with a Good/Shaky/Fail grade. That grade
+   sets the starting rung (`good`→R2, `shaky`/`fail`→R1) and unlocks Recall.
+3. **Recall / Review** — the recurring phase. You schedule the first session;
+   grading it runs the spaced-repetition ladder below and auto-schedules the next.
+
+Each phase shows its bundled topics as a checklist on Today (ticks persist).
+Model: `main_tasks`, `main_task_items`, `topics.main_task_id`
+([`supabase/migrations/0003_main_tasks.sql`](supabase/migrations/0003_main_tasks.sql));
+logic in [`src/lib/phases.ts`](src/lib/phases.ts) and
+[`src/app/actions/mainTasks.ts`](src/app/actions/mainTasks.ts).
 
 ## Spaced-repetition ladder
 
@@ -42,8 +60,8 @@ once that Saturday arrives.
 ### 1. Supabase
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. SQL Editor → run the migrations in [`supabase/migrations/`](supabase/migrations/) in order
-   (`0001_init.sql`, then `0002_routine_link.sql`).
+2. SQL Editor → run every file in [`supabase/migrations/`](supabase/migrations/)
+   in filename order (`0001_init.sql` → `0002_routine_link.sql` → `0003_main_tasks.sql`).
 3. Authentication → Users → **Add user** → create your single login (email + password).
    Authentication → Providers → Email: turn **Confirm email** off (or confirm the user manually).
 4. Project Settings → API → copy the **Project URL**, the **anon** key, and the **service_role** key.

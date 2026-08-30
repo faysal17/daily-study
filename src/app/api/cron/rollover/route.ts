@@ -21,21 +21,32 @@ export async function GET(request: Request) {
   const today = todayISO();
   const target = comingSaturdayISO(today);
 
-  const { data, error } = await supabase
-    .from("study_items")
-    .update({ scheduled_date: target })
-    .lt("scheduled_date", today)
-    .eq("status", "pending")
-    .select("id");
+  const [topics, phases] = await Promise.all([
+    supabase
+      .from("study_items")
+      .update({ scheduled_date: target })
+      .lt("scheduled_date", today)
+      .eq("status", "pending")
+      .select("id"),
+    supabase
+      .from("main_task_items")
+      .update({ scheduled_date: target })
+      .lt("scheduled_date", today)
+      .eq("status", "pending")
+      .select("id"),
+  ]);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  const err = topics.error || phases.error;
+  if (err) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 
   return NextResponse.json({
     ok: true,
     today,
     rolledTo: target,
-    count: data?.length ?? 0,
+    count: (topics.data?.length ?? 0) + (phases.data?.length ?? 0),
+    topicItems: topics.data?.length ?? 0,
+    phaseItems: phases.data?.length ?? 0,
   });
 }
