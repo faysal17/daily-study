@@ -2,21 +2,37 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { deleteItem, deleteTopic } from "@/app/actions/study";
+import {
+  assignTopic,
+  deleteItem,
+  deleteTopic,
+  rescheduleStudyItem,
+} from "@/app/actions/study";
 import { formatShort } from "@/lib/dates";
 import type { TaskRow } from "@/lib/types";
 import { ChevronIcon, TrashIcon } from "@/components/icons";
 import { useConfirm } from "@/components/confirm";
+import { DateBlockFields, type BlockOption } from "@/components/DateBlockFields";
 
 type Filter = "all" | "active" | "done";
 
-export function TasksView({ rows }: { rows: TaskRow[] }) {
+export function TasksView({
+  rows,
+  blocks,
+  today,
+}: {
+  rows: TaskRow[];
+  blocks: BlockOption[];
+  today: string;
+}) {
   const router = useRouter();
   const confirm = useConfirm();
   const [filter, setFilter] = useState<Filter>("all");
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [scheduling, setScheduling] = useState<string | null>(null);
+  const [rescheduling, setRescheduling] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   const visible = useMemo(() => {
@@ -72,6 +88,38 @@ export function TasksView({ rows }: { rows: TaskRow[] }) {
     });
   }
 
+  function scheduleTopic(row: TaskRow, date: string, blockId: string) {
+    setError(null);
+    mark(row.topicId, true);
+    startTransition(async () => {
+      const res = await assignTopic({
+        topicId: row.topicId,
+        date,
+        routineBlockId: blockId || undefined,
+      });
+      if (!res.ok) setError(res.error ?? "Could not schedule.");
+      else setScheduling(null);
+      mark(row.topicId, false);
+      router.refresh();
+    });
+  }
+
+  function moveItem(itemId: string, date: string, blockId: string) {
+    setError(null);
+    mark(itemId, true);
+    startTransition(async () => {
+      const res = await rescheduleStudyItem({
+        itemId,
+        date,
+        routineBlockId: blockId || undefined,
+      });
+      if (!res.ok) setError(res.error ?? "Could not reschedule.");
+      else setRescheduling(null);
+      mark(itemId, false);
+      router.refresh();
+    });
+  }
+
   if (rows.length === 0) {
     return (
       <div className="card px-5 py-10 text-center text-[var(--fg-muted)]">
@@ -105,6 +153,7 @@ export function TasksView({ rows }: { rows: TaskRow[] }) {
       {visible.map((row) => {
         const isOpen = open.has(row.topicId);
         const isBusy = busy.has(row.topicId);
+        const isScheduling = scheduling === row.topicId;
         return (
           <div
             key={row.topicId}
@@ -152,6 +201,20 @@ export function TasksView({ rows }: { rows: TaskRow[] }) {
                   </span>
                 </span>
               </button>
+              {row.pendingCount === 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setScheduling((c) =>
+                      c === row.topicId ? null : row.topicId,
+                    )
+                  }
+                  disabled={isBusy}
+                  className="btn btn-secondary btn-sm shrink-0"
+                >
+                  {isScheduling ? "Close" : "Schedule"}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => removeTopic(row)}
@@ -162,6 +225,20 @@ export function TasksView({ rows }: { rows: TaskRow[] }) {
                 <TrashIcon width={15} height={15} />
               </button>
             </div>
+
+            {isScheduling && (
+              <div className="border-t border-[var(--border)] px-4 py-3">
+                <InlineScheduler
+                  initialDate={today}
+                  initialBlockId=""
+                  blocks={blocks}
+                  pending={isBusy}
+                  saveLabel="Schedule"
+                  onSave={(date, blockId) => scheduleTopic(row, date, blockId)}
+                  onCancel={() => setScheduling(null)}
+                />
+              </div>
+            )}
 
             {isOpen && (
               <div className="border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--fg)_3%,transparent)] px-4 py-2">
@@ -175,40 +252,70 @@ export function TasksView({ rows }: { rows: TaskRow[] }) {
                       <li
                         key={it.id}
                         className={
-                          "flex items-center gap-2 py-2.5 " +
-                          (busy.has(it.id) ? "opacity-50" : "")
+                          "py-2.5 " + (busy.has(it.id) ? "opacity-50" : "")
                         }
                       >
-                        <span
-                          className={
-                            "h-1.5 w-1.5 shrink-0 rounded-full " +
-                            (it.status === "pending"
-                              ? "bg-[var(--accent)]"
-                              : "bg-[var(--fg-subtle)]")
-                          }
-                        />
-                        <span className="w-24 shrink-0 text-sm">
-                          {formatShort(it.scheduledDate)}
-                        </span>
-                        <span className="flex flex-1 flex-wrap items-center gap-1.5">
-                          <span className="chip">R{it.rung}</span>
-                          <span className="chip capitalize">{it.status}</span>
-                          {it.grade && (
-                            <span className="chip capitalize">{it.grade}</span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={
+                              "h-1.5 w-1.5 shrink-0 rounded-full " +
+                              (it.status === "pending"
+                                ? "bg-[var(--accent)]"
+                                : "bg-[var(--fg-subtle)]")
+                            }
+                          />
+                          <span className="w-24 shrink-0 text-sm">
+                            {formatShort(it.scheduledDate)}
+                          </span>
+                          <span className="flex flex-1 flex-wrap items-center gap-1.5">
+                            <span className="chip">R{it.rung}</span>
+                            <span className="chip capitalize">{it.status}</span>
+                            {it.grade && (
+                              <span className="chip capitalize">{it.grade}</span>
+                            )}
+                            {it.routineLabel && (
+                              <span className="chip">{it.routineLabel}</span>
+                            )}
+                          </span>
+                          {it.status === "pending" && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setRescheduling((c) =>
+                                  c === it.id ? null : it.id,
+                                )
+                              }
+                              disabled={busy.has(it.id)}
+                              className="text-xs text-[var(--accent)] underline"
+                            >
+                              {rescheduling === it.id ? "close" : "move"}
+                            </button>
                           )}
-                          {it.routineLabel && (
-                            <span className="chip">{it.routineLabel}</span>
-                          )}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeItem(it.id)}
-                          disabled={busy.has(it.id)}
-                          aria-label="Delete item"
-                          className="btn btn-ghost btn-sm hover:text-[var(--fail)]"
-                        >
-                          <TrashIcon width={14} height={14} />
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => removeItem(it.id)}
+                            disabled={busy.has(it.id)}
+                            aria-label="Delete item"
+                            className="btn btn-ghost btn-sm hover:text-[var(--fail)]"
+                          >
+                            <TrashIcon width={14} height={14} />
+                          </button>
+                        </div>
+                        {rescheduling === it.id && (
+                          <div className="mt-2">
+                            <InlineScheduler
+                              initialDate={it.scheduledDate}
+                              initialBlockId={it.routineBlockId ?? ""}
+                              blocks={blocks}
+                              pending={busy.has(it.id)}
+                              saveLabel="Move"
+                              onSave={(date, blockId) =>
+                                moveItem(it.id, date, blockId)
+                              }
+                              onCancel={() => setRescheduling(null)}
+                            />
+                          </div>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -218,6 +325,56 @@ export function TasksView({ rows }: { rows: TaskRow[] }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** Date + routine-block picker with Save / Cancel, used inline on a topic row. */
+function InlineScheduler({
+  initialDate,
+  initialBlockId,
+  blocks,
+  pending,
+  saveLabel,
+  onSave,
+  onCancel,
+}: {
+  initialDate: string;
+  initialBlockId: string;
+  blocks: BlockOption[];
+  pending: boolean;
+  saveLabel: string;
+  onSave: (date: string, blockId: string) => void;
+  onCancel: () => void;
+}) {
+  const [date, setDate] = useState(initialDate);
+  const [blockId, setBlockId] = useState(initialBlockId);
+  return (
+    <div className="flex flex-col gap-3">
+      <DateBlockFields
+        date={date}
+        onDateChange={setDate}
+        blockId={blockId}
+        onBlockChange={setBlockId}
+        blocks={blocks}
+      />
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={pending || !date}
+          onClick={() => onSave(date, blockId)}
+          className="btn btn-primary btn-sm"
+        >
+          {saveLabel}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="btn btn-ghost btn-sm"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }

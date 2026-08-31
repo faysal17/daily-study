@@ -2,6 +2,7 @@ import { NavBar, PageHeader } from "@/components/NavBar";
 import { TasksView } from "@/components/TasksView";
 import { MainTasksPanel } from "@/components/MainTasksPanel";
 import { createClient } from "@/lib/supabase/server";
+import { hhmm, todayISO } from "@/lib/dates";
 import type { Grade } from "@/lib/ladder";
 import type { Phase } from "@/lib/phases";
 import type {
@@ -31,6 +32,7 @@ type PhaseItemRow = {
   scheduled_date: string;
   status: ItemStatus;
   grade: Grade | null;
+  routine_block_id: string | null;
 };
 
 export default async function TasksPage() {
@@ -53,14 +55,19 @@ export default async function TasksPage() {
         "id, topic_id, scheduled_date, status, rung, grade, routine_block_id",
       )
       .order("scheduled_date", { ascending: true }),
-    supabase.from("routine_blocks").select("id, label"),
+    supabase
+      .from("routine_blocks")
+      .select("id, label, start_time, end_time, active")
+      .order("start_time", { ascending: true }),
     supabase
       .from("main_tasks")
       .select("id, name, subject, phase, rung")
       .order("created_at", { ascending: false }),
     supabase
       .from("main_task_items")
-      .select("id, main_task_id, phase, scheduled_date, status, grade")
+      .select(
+        "id, main_task_id, phase, scheduled_date, status, grade, routine_block_id",
+      )
       .order("scheduled_date", { ascending: true }),
   ]);
 
@@ -68,7 +75,22 @@ export default async function TasksPage() {
   const items = (itemData ?? []) as ItemRow[];
   const mts = (mtData ?? []) as MtRow[];
   const mtItems = (mtItemData ?? []) as PhaseItemRow[];
-  void blockData;
+  const today = todayISO();
+
+  const blocks = (blockData ?? []) as {
+    id: string;
+    label: string;
+    start_time: string;
+    end_time: string;
+    active: boolean;
+  }[];
+  const blockLabelById = new Map(blocks.map((b) => [b.id, b.label]));
+  const blockOptions = blocks
+    .filter((b) => b.active)
+    .map((b) => ({
+      id: b.id,
+      label: `${b.label} · ${hhmm(b.start_time)}–${hhmm(b.end_time)}`,
+    }));
 
   const mtNameById = new Map(mts.map((m) => [m.id, m.name]));
 
@@ -104,7 +126,10 @@ export default async function TasksPage() {
         status: i.status,
         rung: i.rung,
         grade: i.grade,
-        routineLabel: null,
+        routineLabel: i.routine_block_id
+          ? blockLabelById.get(i.routine_block_id) ?? null
+          : null,
+        routineBlockId: i.routine_block_id,
       })),
     };
   });
@@ -134,7 +159,12 @@ export default async function TasksPage() {
       rung: m.rung,
       topicNames: topicsByMt.get(m.id) ?? [],
       pendingItem: open
-        ? { id: open.id, phase: open.phase, scheduledDate: open.scheduled_date }
+        ? {
+            id: open.id,
+            phase: open.phase,
+            scheduledDate: open.scheduled_date,
+            routineBlockId: open.routine_block_id,
+          }
         : null,
       history: list
         .filter((i) => i.status === "done")
@@ -164,12 +194,17 @@ export default async function TasksPage() {
         } · ${topics.length} topic${topics.length === 1 ? "" : "s"}`}
       />
 
-      <MainTasksPanel rows={mainTaskRows} topicOptions={allTopicOptions} />
+      <MainTasksPanel
+        rows={mainTaskRows}
+        topicOptions={allTopicOptions}
+        blocks={blockOptions}
+        today={today}
+      />
 
       <h2 className="mt-8 mb-3 px-1 text-sm font-semibold text-[var(--fg-muted)]">
         Topics
       </h2>
-      <TasksView rows={topicRows} />
+      <TasksView rows={topicRows} blocks={blockOptions} today={today} />
     </main>
   );
 }

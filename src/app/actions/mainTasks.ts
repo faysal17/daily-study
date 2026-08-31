@@ -142,6 +142,31 @@ export async function scheduleMainTaskPhase(input: {
   return { ok: true, message: `Scheduled ${mt.phase} for ${date}.` };
 }
 
+/** Move a still-pending phase item to a new date / routine block. */
+export async function rescheduleMainTaskPhase(input: {
+  itemId: string;
+  date: string;
+  routineBlockId?: string;
+}): Promise<ActionResult> {
+  const supabase = await createClient();
+  const date = (input.date || "").trim();
+  if (!date) return { ok: false, error: "Pick a date." };
+
+  const { error } = await supabase
+    .from("main_task_items")
+    .update({
+      scheduled_date: date,
+      routine_block_id: input.routineBlockId?.trim() || null,
+    })
+    .eq("id", input.itemId)
+    .eq("status", "pending");
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidateAll();
+  return { ok: true, message: `Moved to ${date}.` };
+}
+
 /** Tick / untick a topic within a due phase item's checklist. */
 export async function togglePhaseTopic(
   itemId: string,

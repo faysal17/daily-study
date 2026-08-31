@@ -111,7 +111,12 @@ export interface MainTaskRow {
   phase: Phase;
   rung: number;
   topicNames: string[];
-  pendingItem: { id: string; phase: Phase; scheduledDate: string } | null;
+  pendingItem: {
+    id: string;
+    phase: Phase;
+    scheduledDate: string;
+    routineBlockId: string | null;
+  } | null;
   history: {
     id: string;
     phase: Phase;
@@ -139,5 +144,6 @@ export interface TaskRow {
     rung: number;
     grade: Grade | null;
     routineLabel: string | null;
+    routineBlockId: string | null;
   }[];
 }

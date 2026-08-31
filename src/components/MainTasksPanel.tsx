@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   createMainTask,
   deleteMainTask,
   deletePhaseItem,
+  rescheduleMainTaskPhase,
+  scheduleMainTaskPhase,
   setMainTaskTopics,
 } from "@/app/actions/mainTasks";
 import { formatShort } from "@/lib/dates";
@@ -13,6 +15,7 @@ import { PHASES, PHASE_LABEL, PHASE_SHORT } from "@/lib/phases";
 import type { MainTaskRow } from "@/lib/types";
 import { ChevronIcon, PlusIcon, TrashIcon } from "@/components/icons";
 import { useConfirm } from "@/components/confirm";
+import { DateBlockFields, type BlockOption } from "@/components/DateBlockFields";
 
 type TopicOption = { id: string; name: string; mainTaskId: string | null };
 
@@ -75,9 +78,13 @@ function TopicPicker({
 export function MainTasksPanel({
   rows,
   topicOptions,
+  blocks,
+  today,
 }: {
   rows: MainTaskRow[];
   topicOptions: TopicOption[];
+  blocks: BlockOption[];
+  today: string;
 }) {
   const router = useRouter();
   const confirm = useConfirm();
@@ -254,29 +261,31 @@ export function MainTasksPanel({
                   <PhaseTrack current={row.phase} />
                 </div>
 
-                <p className="mt-3 text-sm text-[var(--fg-muted)]">
-                  {row.pendingItem ? (
-                    <>
-                      {PHASE_LABEL[row.pendingItem.phase]} scheduled for{" "}
-                      {formatShort(row.pendingItem.scheduledDate)}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          run(() => deletePhaseItem(row.pendingItem!.id))
-                        }
-                        disabled={pending}
-                        className="ml-2 text-[var(--fail)] underline"
-                      >
-                        unschedule
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      No phase scheduled — do it on{" "}
-                      <span className="text-[var(--fg)]">Add</span>.
-                    </>
-                  )}
-                </p>
+                <PhaseScheduler
+                  row={row}
+                  blocks={blocks}
+                  today={today}
+                  pending={pending}
+                  onSchedule={(date, blockId) =>
+                    run(() =>
+                      scheduleMainTaskPhase({
+                        mainTaskId: row.id,
+                        date,
+                        routineBlockId: blockId || undefined,
+                      }),
+                    )
+                  }
+                  onReschedule={(itemId, date, blockId) =>
+                    run(() =>
+                      rescheduleMainTaskPhase({
+                        itemId,
+                        date,
+                        routineBlockId: blockId || undefined,
+                      }),
+                    )
+                  }
+                  onUnschedule={(itemId) => run(() => deletePhaseItem(itemId))}
+                />
 
                 <div className="mt-3 flex flex-wrap items-center gap-1.5">
                   {row.topicNames.length === 0 ? (
@@ -360,6 +369,125 @@ export function MainTasksPanel({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * The schedule / reschedule / unschedule control for one main task's current
+ * phase. Shows a "Schedule <phase>" button when nothing is queued, or the
+ * scheduled date with reschedule + unschedule when a phase item is open.
+ */
+function PhaseScheduler({
+  row,
+  blocks,
+  today,
+  pending,
+  onSchedule,
+  onReschedule,
+  onUnschedule,
+}: {
+  row: MainTaskRow;
+  blocks: BlockOption[];
+  today: string;
+  pending: boolean;
+  onSchedule: (date: string, blockId: string) => void;
+  onReschedule: (itemId: string, date: string, blockId: string) => void;
+  onUnschedule: (itemId: string) => void;
+}) {
+  const item = row.pendingItem;
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState(item?.scheduledDate ?? today);
+  const [blockId, setBlockId] = useState(item?.routineBlockId ?? "");
+
+  // Reconcile local form state after a server round-trip changes the row.
+  useEffect(() => {
+    setOpen(false);
+    setDate(item?.scheduledDate ?? today);
+    setBlockId(item?.routineBlockId ?? "");
+  }, [item?.id, item?.scheduledDate, item?.routineBlockId, today]);
+
+  const fields = (
+    <div className="mt-2 flex flex-col gap-3">
+      <DateBlockFields
+        date={date}
+        onDateChange={setDate}
+        blockId={blockId}
+        onBlockChange={setBlockId}
+        blocks={blocks}
+      />
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={pending || !date}
+          onClick={() =>
+            item ? onReschedule(item.id, date, blockId) : onSchedule(date, blockId)
+          }
+          className="btn btn-primary btn-sm"
+        >
+          {item ? "Save" : "Schedule"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="btn btn-ghost btn-sm"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+
+  if (item) {
+    return (
+      <div className="mt-3 text-sm text-[var(--fg-muted)]">
+        <span className="font-medium text-[var(--fg)]">
+          {PHASE_LABEL[item.phase]}
+        </span>{" "}
+        scheduled for {formatShort(item.scheduledDate)}
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          disabled={pending}
+          className="ml-2 text-[var(--accent)] underline"
+        >
+          {open ? "close" : "reschedule"}
+        </button>
+        <button
+          type="button"
+          onClick={() => onUnschedule(item.id)}
+          disabled={pending}
+          className="ml-2 text-[var(--fail)] underline"
+        >
+          unschedule
+        </button>
+        {open && fields}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3">
+      {open ? (
+        <>
+          <p className="text-sm text-[var(--fg-muted)]">
+            Schedule{" "}
+            <span className="font-medium text-[var(--fg)]">
+              {PHASE_LABEL[row.phase]}
+            </span>
+          </p>
+          {fields}
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          disabled={pending}
+          className="btn btn-secondary btn-sm"
+        >
+          Schedule {PHASE_SHORT[row.phase]}
+        </button>
+      )}
+    </div>
   );
 }
 

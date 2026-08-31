@@ -7,6 +7,7 @@ import { assignTopic } from "@/app/actions/study";
 import { scheduleMainTaskPhase } from "@/app/actions/mainTasks";
 import { PHASE_LABEL, type Phase } from "@/lib/phases";
 import type { Topic } from "@/lib/types";
+import { DateBlockFields } from "@/components/DateBlockFields";
 
 type MainTaskOpt = {
   id: string;
@@ -198,11 +199,11 @@ function TopicForm({
         </>
       )}
 
-      <DateAndBlock
+      <DateBlockFields
         date={date}
-        setDate={setDate}
+        onDateChange={setDate}
         blockId={blockId}
-        setBlockId={setBlockId}
+        onBlockChange={setBlockId}
         blocks={blocks}
       />
 
@@ -313,11 +314,11 @@ function MainPhaseForm({
         </p>
       )}
 
-      <DateAndBlock
+      <DateBlockFields
         date={date}
-        setDate={setDate}
+        onDateChange={setDate}
         blockId={blockId}
-        setBlockId={setBlockId}
+        onBlockChange={setBlockId}
         blocks={blocks}
       />
 
@@ -330,56 +331,6 @@ function MainPhaseForm({
         {pending ? "Scheduling…" : "Schedule phase"}
       </button>
     </form>
-  );
-}
-
-function DateAndBlock({
-  date,
-  setDate,
-  blockId,
-  setBlockId,
-  blocks,
-}: {
-  date: string;
-  setDate: (v: string) => void;
-  blockId: string;
-  setBlockId: (v: string) => void;
-  blocks: { id: string; label: string }[];
-}) {
-  return (
-    <div className="grid grid-cols-2 gap-3">
-      <div>
-        <label className="field-label" htmlFor="date">
-          Study on
-        </label>
-        <input
-          id="date"
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="input"
-          required
-        />
-      </div>
-      <div>
-        <label className="field-label" htmlFor="block">
-          Routine block
-        </label>
-        <select
-          id="block"
-          value={blockId}
-          onChange={(e) => setBlockId(e.target.value)}
-          className="input"
-        >
-          <option value="">Anytime</option>
-          {blocks.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.label}
-            </option>
-          ))}
-        </select>
-      </div>
-    </div>
   );
 }
 

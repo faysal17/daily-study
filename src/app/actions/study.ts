@@ -121,6 +121,34 @@ export async function gradeItem(
   return { ok: true, message: `Next review: ${nextDate} (R${newRung}).` };
 }
 
+/**
+ * Move a still-pending study item to a new date / routine block. Does not touch
+ * the ladder — it only relocates work that hasn't been graded yet.
+ */
+export async function rescheduleStudyItem(input: {
+  itemId: string;
+  date: string;
+  routineBlockId?: string;
+}): Promise<ActionResult> {
+  const supabase = await createClient();
+  const date = (input.date || "").trim();
+  if (!date) return { ok: false, error: "Pick a date." };
+
+  const { error } = await supabase
+    .from("study_items")
+    .update({
+      scheduled_date: date,
+      routine_block_id: input.routineBlockId?.trim() || null,
+    })
+    .eq("id", input.itemId)
+    .eq("status", "pending");
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidateAll();
+  return { ok: true, message: `Moved to ${date}.` };
+}
+
 /** Delete a single scheduled/finished item. */
 export async function deleteItem(itemId: string): Promise<ActionResult> {
   const supabase = await createClient();
