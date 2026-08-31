@@ -1,13 +1,12 @@
 import Link from "next/link";
 import { signOut } from "@/app/actions/auth";
-import { SunIcon, ListIcon, PlusIcon, ClockIcon } from "@/components/icons";
+import { SunIcon, ListIcon, ClockIcon } from "@/components/icons";
 
-type Tab = "today" | "tasks" | "add" | "routine";
+type Tab = "today" | "tasks" | "routine";
 
 const TABS: { key: Tab; href: string; label: string; Icon: typeof SunIcon }[] = [
   { key: "today", href: "/", label: "Today", Icon: SunIcon },
-  { key: "tasks", href: "/tasks", label: "Tasks", Icon: ListIcon },
-  { key: "add", href: "/add", label: "Add", Icon: PlusIcon },
+  { key: "tasks", href: "/tasks", label: "Plan", Icon: ListIcon },
   { key: "routine", href: "/routine", label: "Routine", Icon: ClockIcon },
 ];
 

@@ -9,7 +9,6 @@ import type { ActionResult } from "@/lib/types";
 
 function revalidateAll() {
   revalidatePath("/");
-  revalidatePath("/add");
   revalidatePath("/tasks");
 }
 

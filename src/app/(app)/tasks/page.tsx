@@ -188,7 +188,7 @@ export default async function TasksPage() {
     <main className="page">
       <NavBar active="tasks" />
       <PageHeader
-        title="Tasks"
+        title="Plan"
         subtitle={`${mts.length} main task${
           mts.length === 1 ? "" : "s"
         } · ${topics.length} topic${topics.length === 1 ? "" : "s"}`}
@@ -201,10 +201,9 @@ export default async function TasksPage() {
         today={today}
       />
 
-      <h2 className="mt-8 mb-3 px-1 text-sm font-semibold text-[var(--fg-muted)]">
-        Topics
-      </h2>
-      <TasksView rows={topicRows} blocks={blockOptions} today={today} />
+      <div className="mt-8">
+        <TasksView rows={topicRows} blocks={blockOptions} today={today} />
+      </div>
     </main>
   );
 }

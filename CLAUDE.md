@@ -50,13 +50,13 @@ src/
       layout.tsx            force-dynamic; calls requireUser() — the auth gate for every screen
       loading.tsx           skeleton for the group
       page.tsx              Today
-      tasks/page.tsx        Tasks (main tasks + topics)
-      add/page.tsx          Add / Assign
+      tasks/page.tsx        Plan — main tasks + topics + all inline scheduling
+      add/page.tsx          redirect stub -> /tasks (old bookmarks)
       routine/page.tsx      Routine editor
     actions/                Server Actions ("use server")
       auth.ts               signIn / signOut  -> AuthState / redirect
-      study.ts              assignTopic, gradeItem, deleteItem, deleteTopic
-      mainTasks.ts          create/delete/setTopics/schedule/toggle/complete/delete-phase
+      study.ts              assignTopic, gradeItem, rescheduleStudyItem, deleteItem, deleteTopic
+      mainTasks.ts          create/delete/setTopics/schedule/reschedule/toggle/complete/delete-phase
       routine.ts            createBlock / updateBlock / deleteBlock (take FormData)
     api/cron/rollover/route.ts   daily overdue rollover (service-role, CRON_SECRET)
   lib/
@@ -70,8 +70,9 @@ src/
       client.ts            createClient() for Client Components (browser)
       admin.ts             createAdminClient() — service role, bypasses RLS, CRON ONLY
   components/              all "use client"
-    NavBar.tsx, TodayList.tsx, RoutineBanner.tsx, AddForm.tsx,
+    NavBar.tsx, TodayList.tsx, RoutineBanner.tsx,
     TasksView.tsx, MainTasksPanel.tsx, RoutineEditor.tsx,
+    DateBlockFields.tsx (shared date + routine-block picker),
     confirm.tsx (useConfirm hook + <dialog>), icons.tsx (inline SVG set)
 supabase/migrations/       0001_init, 0002_routine_link, 0003_main_tasks — hand-run, idempotent
 ```
@@ -152,7 +153,7 @@ app). The cron job uses the service-role key and bypasses RLS.
 - **Server Actions** return `ActionResult { ok: boolean; error?: string; message?: string }`.
   Exceptions: `auth.ts` returns `AuthState` for `useActionState`; `routine.ts`
   actions take `FormData`.
-- After a write, actions call `revalidatePath` for `/`, `/add`, `/tasks`
+- After a write, actions call `revalidatePath` for `/` and `/tasks`
   (`routine.ts` also `/routine`). All authed pages are `export const dynamic = "force-dynamic"`.
 - **Client components** drive mutations with `useTransition` + `router.refresh()`.
   `TodayList` removes a row from local state immediately, then reconciles /
@@ -189,7 +190,10 @@ Copy `.env.example` → `.env.local`:
 - Migrations are **not** applied by a tool — run each file in
   `supabase/migrations/` by hand in the Supabase SQL editor, in filename order.
   Every file is written to be safe to re-run.
-- The Tasks screen fetches `routine_blocks` but currently ignores the labels
-  (`routineLabel` is hard-coded `null` in `TasksPage`).
+- `/add` is a redirect stub to `/tasks`; the Plan screen (`tasks/page.tsx` +
+  `MainTasksPanel` / `TasksView`) owns all scheduling. The "one open phase per
+  main task" rule is still enforced in `scheduleMainTaskPhase` as a backstop.
+- The topic-level **Schedule** button calls `assignTopic`, which starts a new
+  item at **R0** regardless of the topic's history (same as the old Add screen).
 - `RoutineBanner` uses the browser `Notification` API for a start-of-block
   reminder; it is best-effort and client-only.

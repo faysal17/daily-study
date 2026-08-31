@@ -19,7 +19,7 @@ export default async function RoutinePage() {
       <NavBar active="routine" />
       <PageHeader
         title="Routine"
-        subtitle="Your daily time blocks. Assign tasks to these on the Add screen."
+        subtitle="Your daily time blocks. Assign tasks to these on the Plan screen."
       />
       <RoutineEditor blocks={blocks} />
     </main>

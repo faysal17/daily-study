@@ -6,9 +6,9 @@ export type BlockOption = { id: string; label: string };
 
 /**
  * Shared date + routine-block field pair used by every "schedule this for a day"
- * surface (the Add screen and the inline schedulers on Tasks). Stacks on narrow
- * screens, two columns from `sm` up. IDs are namespaced with `useId` so several
- * instances can render on one page.
+ * surface (the inline schedulers and the new-topic form on the Plan screen).
+ * Stacks on narrow screens, two columns from `sm` up. IDs are namespaced with
+ * `useId` so several instances can render on one page.
  */
 export function DateBlockFields({
   date,

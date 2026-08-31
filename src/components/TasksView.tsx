@@ -10,7 +10,7 @@ import {
 } from "@/app/actions/study";
 import { formatShort } from "@/lib/dates";
 import type { TaskRow } from "@/lib/types";
-import { ChevronIcon, TrashIcon } from "@/components/icons";
+import { ChevronIcon, PlusIcon, TrashIcon } from "@/components/icons";
 import { useConfirm } from "@/components/confirm";
 import { DateBlockFields, type BlockOption } from "@/components/DateBlockFields";
 
@@ -28,6 +28,7 @@ export function TasksView({
   const router = useRouter();
   const confirm = useConfirm();
   const [filter, setFilter] = useState<Filter>("all");
+  const [showBundled, setShowBundled] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -35,12 +36,26 @@ export function TasksView({
   const [rescheduling, setRescheduling] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
+  // create-a-topic form
+  const [creating, setCreating] = useState(false);
+  const [savingNew, setSavingNew] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newSubject, setNewSubject] = useState("");
+  const [newDate, setNewDate] = useState(today);
+  const [newBlockId, setNewBlockId] = useState("");
+
+  const bundledCount = useMemo(
+    () => rows.filter((r) => r.mainTaskName).length,
+    [rows],
+  );
+
   const visible = useMemo(() => {
-    if (filter === "active") return rows.filter((r) => r.pendingCount > 0);
+    const base = showBundled ? rows : rows.filter((r) => !r.mainTaskName);
+    if (filter === "active") return base.filter((r) => r.pendingCount > 0);
     if (filter === "done")
-      return rows.filter((r) => r.pendingCount === 0 && r.doneCount > 0);
-    return rows;
-  }, [rows, filter]);
+      return base.filter((r) => r.pendingCount === 0 && r.doneCount > 0);
+    return base;
+  }, [rows, filter, showBundled]);
 
   function toggle(id: string) {
     setOpen((cur) => {
@@ -120,35 +135,136 @@ export function TasksView({
     });
   }
 
-  if (rows.length === 0) {
-    return (
-      <div className="card px-5 py-10 text-center text-[var(--fg-muted)]">
-        No topics yet. Add one on the Add screen.
-      </div>
-    );
+  function submitCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const name = newName.trim();
+    if (!name) return;
+    setSavingNew(true);
+    startTransition(async () => {
+      const res = await assignTopic({
+        newTopicName: name,
+        subject: newSubject.trim() || undefined,
+        date: newDate,
+        routineBlockId: newBlockId || undefined,
+      });
+      if (!res.ok) {
+        setError(res.error ?? "Could not add topic.");
+      } else {
+        setNewName("");
+        setNewSubject("");
+        setNewBlockId("");
+        setNewDate(today);
+        setCreating(false);
+      }
+      setSavingNew(false);
+      router.refresh();
+    });
   }
+
+  const emptyMessage =
+    rows.length === 0
+      ? "No topics yet. Create one with “New topic”."
+      : !showBundled && bundledCount > 0
+        ? "No standalone topics. Tick “Show in main tasks” to see the rest."
+        : "Nothing matches this filter.";
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="inline-flex self-start rounded-lg border border-[var(--border-strong)] p-0.5 text-sm">
-        {(["all", "active", "done"] as const).map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setFilter(f)}
-            className={
-              "rounded-[7px] px-3 py-1.5 font-medium capitalize transition-colors " +
-              (filter === f
-                ? "bg-[var(--accent)] text-[var(--accent-fg)]"
-                : "text-[var(--fg-muted)] hover:text-[var(--fg)]")
-            }
-          >
-            {f}
-          </button>
-        ))}
+      <div className="mb-1 flex items-center justify-between px-1">
+        <h2 className="text-sm font-semibold text-[var(--fg-muted)]">Topics</h2>
+        <button
+          type="button"
+          onClick={() => setCreating((v) => !v)}
+          className="btn btn-secondary btn-sm"
+        >
+          <PlusIcon width={14} height={14} />
+          New topic
+        </button>
       </div>
 
-      {error && <p className="text-sm text-[var(--fail)]">{error}</p>}
+      {error && <p className="px-1 text-sm text-[var(--fail)]">{error}</p>}
+
+      {creating && (
+        <form onSubmit={submitCreate} className="card flex flex-col gap-3 p-4">
+          <div>
+            <label className="field-label" htmlFor="new-topic-name">
+              Topic name
+            </label>
+            <input
+              id="new-topic-name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              className="input"
+              placeholder="e.g. Liberation War — phases"
+              required
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="new-topic-subject">
+              Subject <span className="text-[var(--fg-subtle)]">(optional)</span>
+            </label>
+            <input
+              id="new-topic-subject"
+              value={newSubject}
+              onChange={(e) => setNewSubject(e.target.value)}
+              className="input"
+              placeholder="e.g. Bangladesh Affairs"
+            />
+          </div>
+          <DateBlockFields
+            date={newDate}
+            onDateChange={setNewDate}
+            blockId={newBlockId}
+            onBlockChange={setNewBlockId}
+            blocks={blocks}
+          />
+          <button
+            type="submit"
+            disabled={savingNew}
+            className="btn btn-primary self-start"
+          >
+            {savingNew ? "Adding…" : "Add topic"}
+          </button>
+        </form>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="inline-flex self-start rounded-lg border border-[var(--border-strong)] p-0.5 text-sm">
+          {(["all", "active", "done"] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setFilter(f)}
+              className={
+                "rounded-[7px] px-3 py-1.5 font-medium capitalize transition-colors " +
+                (filter === f
+                  ? "bg-[var(--accent)] text-[var(--accent-fg)]"
+                  : "text-[var(--fg-muted)] hover:text-[var(--fg)]")
+              }
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+        {bundledCount > 0 && (
+          <label className="flex items-center gap-1.5 text-xs text-[var(--fg-muted)]">
+            <input
+              type="checkbox"
+              checked={showBundled}
+              onChange={(e) => setShowBundled(e.target.checked)}
+              className="accent-[var(--accent)]"
+            />
+            Show {bundledCount} in main tasks
+          </label>
+        )}
+      </div>
+
+      {visible.length === 0 && (
+        <div className="card px-5 py-10 text-center text-sm text-[var(--fg-muted)]">
+          {emptyMessage}
+        </div>
+      )}
 
       {visible.map((row) => {
         const isOpen = open.has(row.topicId);

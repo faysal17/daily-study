@@ -11,9 +11,9 @@ Stack: Next.js (App Router) · Supabase (Postgres + Auth) · Vercel (hosting + C
 | Route      | What it does |
 |------------|--------------|
 | `/`        | **Today** — topics and main-task phases due today, grouped under the routine time block they're assigned to (plus "Anytime"). Grade a topic Good/Shaky/Fail; finish a phase (Skim/Notes just "done"; Exam/Recall take a grade). Item disappears and the next occurrence is scheduled. On Saturdays also shows overdue items rolled forward from the week. Top banner shows your current/next routine block. |
-| `/tasks`   | **Tasks** — **Main tasks**: create a bundle (name + subject + topics), see its phase track (Skim → Notes → Exam → Recall), edit its topics, unschedule a pending phase, delete it (topics survive). **Topics**: every topic with its scheduling summary; expand to see items; delete an item or a whole topic. |
-| `/add`     | **Add / Assign** — *Topic*: put an existing/new topic on a date + optional routine block. *Main task phase*: schedule the selected main task's current phase. No auto-suggestions. |
+| `/tasks`   | **Plan** — the single planning surface (the old *Add* screen is folded in here). **Main tasks**: create a bundle (name + subject + topics), see its phase track (Skim → Notes → Exam → Recall), **schedule / reschedule / unschedule** its current phase inline on the card (date + optional routine block), edit its topics, delete it (topics survive). **Topics**: create a topic and put it on a date; every topic with its scheduling summary; expand to see items; move a pending item to another day; delete an item or a whole topic. Topics that belong to a main task are hidden behind a toggle. No auto-suggestions. |
 | `/routine` | **Routine** — editable list of daily time blocks (label + start/end + weekdays + active). |
+| `/add`     | Redirects to `/tasks` (kept for old bookmarks). |
 
 ## Main tasks (Skim → Notes → Exam → Recall)
 
