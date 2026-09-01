@@ -46,10 +46,25 @@ export async function assignTopic(input: {
   } else {
     const { data } = await supabase
       .from("topics")
-      .select("name")
+      .select("name, main_task_id")
       .eq("id", topicId)
       .single();
     topicName = data?.name ?? "topic";
+
+    if (data?.main_task_id) {
+      const { data: mt } = await supabase
+        .from("main_tasks")
+        .select("phase")
+        .eq("id", data.main_task_id)
+        .single();
+      if (mt && mt.phase !== "done") {
+        return {
+          ok: false,
+          error:
+            "This topic is in a main task. Schedule the main task's phase instead — its topics start their own review after the Exam.",
+        };
+      }
+    }
   }
 
   const { error: insErr } = await supabase.from("study_items").insert({
@@ -67,13 +82,17 @@ export async function assignTopic(input: {
 }
 
 /**
- * Grade a due item. Marks it done, records the grade, and schedules the next
- * occurrence for the same topic at the new rung's interval — keeping the same
- * routine block. History is kept: the graded row stays as the review log.
+ * Finish a due item. Marks it done and schedules the next occurrence for the
+ * same topic, keeping the same routine block. History is kept: the graded row
+ * stays as the review log.
+ *
+ * Rung 0 is the topic's *first pass* — there is nothing to recall yet, so it
+ * takes no grade (`grade` is null). It just moves onto the ladder at R1, and
+ * every occurrence after that is graded Good / Shaky / Fail.
  */
 export async function gradeItem(
   itemId: string,
-  grade: Grade,
+  grade: Grade | null,
 ): Promise<ActionResult> {
   const supabase = await createClient();
 
@@ -90,15 +109,20 @@ export async function gradeItem(
     return { ok: true, message: "Already graded." };
   }
 
+  const firstPass = item.rung === 0;
+  if (!firstPass && !grade) {
+    return { ok: false, error: "Pick a grade." };
+  }
+
   const today = todayISO();
-  const newRung = nextRung(item.rung, grade);
+  const newRung = firstPass ? 1 : nextRung(item.rung, grade as Grade);
   const nextDate = addDaysISO(today, intervalDays(newRung));
 
   const { error: upErr } = await supabase
     .from("study_items")
     .update({
       status: "done",
-      grade,
+      grade: grade ?? null,
       last_reviewed_at: new Date().toISOString(),
     })
     .eq("id", item.id)
@@ -117,7 +141,12 @@ export async function gradeItem(
   if (insErr) return { ok: false, error: insErr.message };
 
   revalidateAll();
-  return { ok: true, message: `Next review: ${nextDate} (R${newRung}).` };
+  return {
+    ok: true,
+    message: firstPass
+      ? `First pass done. First review: ${nextDate} (R1).`
+      : `Next review: ${nextDate} (R${newRung}).`,
+  };
 }
 
 /**

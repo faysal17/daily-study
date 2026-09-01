@@ -38,6 +38,14 @@ export async function createMainTask(input: {
       .update({ main_task_id: mt.id })
       .in("id", existing);
     if (e) return { ok: false, error: e.message };
+
+    // The phase flow now owns these topics' schedule until the Exam hands them
+    // back out. Drop any pending standalone reviews (done history is kept).
+    await supabase
+      .from("study_items")
+      .delete()
+      .eq("status", "pending")
+      .in("topic_id", existing);
   }
 
   const fresh = (input.newTopicNames ?? [])
@@ -70,14 +78,19 @@ export async function setMainTaskTopics(
   const supabase = await createClient();
   const keep = topicIds.filter(Boolean);
 
-  // Detach any topic currently on this main task that isn't in the new set.
+  const { data: mt } = await supabase
+    .from("main_tasks")
+    .select("phase")
+    .eq("id", mainTaskId)
+    .single();
+
   const { data: current } = await supabase
     .from("topics")
     .select("id")
     .eq("main_task_id", mainTaskId);
-  const toDetach = (current ?? [])
-    .map((t) => (t as { id: string }).id)
-    .filter((id) => !keep.includes(id));
+  const currentIds = (current ?? []).map((t) => (t as { id: string }).id);
+  const toDetach = currentIds.filter((id) => !keep.includes(id));
+  const toAttach = keep.filter((id) => !currentIds.includes(id));
 
   if (toDetach.length > 0) {
     const { error } = await supabase
@@ -86,12 +99,24 @@ export async function setMainTaskTopics(
       .in("id", toDetach);
     if (error) return { ok: false, error: error.message };
   }
-  if (keep.length > 0) {
+  if (toAttach.length > 0) {
     const { error } = await supabase
       .from("topics")
       .update({ main_task_id: mainTaskId })
-      .in("id", keep);
+      .in("id", toAttach);
     if (error) return { ok: false, error: error.message };
+
+    // While the bundle is still running its phases it owns these topics'
+    // schedule — clear pending standalone reviews (done history is kept). Once
+    // the bundle is `done` its topics are back on their own ladder, so leave
+    // their items alone.
+    if (mt && mt.phase !== "done") {
+      await supabase
+        .from("study_items")
+        .delete()
+        .eq("status", "pending")
+        .in("topic_id", toAttach);
+    }
   }
 
   revalidateAll();
@@ -112,6 +137,12 @@ export async function scheduleMainTaskPhase(input: {
     .eq("id", input.mainTaskId)
     .single();
   if (error || !mt) return { ok: false, error: "Main task not found." };
+  if (mt.phase === "done") {
+    return {
+      ok: false,
+      error: "This main task is finished — its topics are on their own review ladder now.",
+    };
+  }
 
   const { data: openItems } = await supabase
     .from("main_task_items")
@@ -132,7 +163,7 @@ export async function scheduleMainTaskPhase(input: {
     phase: mt.phase,
     scheduled_date: date,
     status: "pending",
-    rung: mt.phase === "recall" ? mt.rung : 0,
+    rung: 0,
     routine_block_id: input.routineBlockId?.trim() || null,
   });
   if (insErr) return { ok: false, error: insErr.message };
@@ -195,8 +226,9 @@ export async function togglePhaseTopic(
 
 /**
  * Complete a due phase item. Skim/Notes just finish and unlock the next phase.
- * Exam needs a grade and sets the starting rung for Recall. Grading a Recall
- * session runs the ladder and auto-schedules the next Recall session.
+ * Exam needs a grade; grading it hands the bundle off — every bundled topic
+ * gets its own `pending` study_item at the exam-seeded rung (good -> R2,
+ * shaky/fail -> R1) and the main task moves to the terminal `done` phase.
  */
 export async function completePhaseItem(
   itemId: string,
@@ -215,13 +247,6 @@ export async function completePhaseItem(
   if (phaseNeedsGrade(item.phase) && !grade) {
     return { ok: false, error: "Pick a grade." };
   }
-
-  const { data: mt } = await supabase
-    .from("main_tasks")
-    .select("id, rung")
-    .eq("id", item.main_task_id)
-    .single();
-  const currentRung = mt?.rung ?? 0;
 
   const { error: upErr } = await supabase
     .from("main_task_items")
@@ -242,31 +267,49 @@ export async function completePhaseItem(
       .update({ phase: nextPhase(item.phase) })
       .eq("id", item.main_task_id);
     message = `${item.phase === "skim" ? "Notes" : "Exam"} phase unlocked.`;
-  } else if (item.phase === "exam") {
-    const startRung = nextRung(0, grade as Grade);
-    await supabase
-      .from("main_tasks")
-      .update({ phase: "recall", rung: startRung })
-      .eq("id", item.main_task_id);
-    message = `Recall phase unlocked at R${startRung}. Schedule the first review.`;
   } else {
-    // recall — run the ladder and queue the next review
-    const newRung = nextRung(currentRung, grade as Grade);
-    const nextDate = addDaysISO(todayISO(), intervalDays(newRung));
+    // Exam (the only graded phase) — hand off to per-topic spaced repetition.
+    const startRung = nextRung(0, grade as Grade);
+    const nextDate = addDaysISO(todayISO(), intervalDays(startRung));
+
+    const { data: topics } = await supabase
+      .from("topics")
+      .select("id")
+      .eq("main_task_id", item.main_task_id);
+    const topicIds = (topics ?? []).map((t) => (t as { id: string }).id);
+
+    if (topicIds.length > 0) {
+      // One fresh pending review per topic; clear any stragglers first so a
+      // re-run can't double up.
+      await supabase
+        .from("study_items")
+        .delete()
+        .eq("status", "pending")
+        .in("topic_id", topicIds);
+
+      const { error: insErr } = await supabase.from("study_items").insert(
+        topicIds.map((id) => ({
+          topic_id: id,
+          scheduled_date: nextDate,
+          status: "pending" as const,
+          rung: startRung,
+          routine_block_id: item.routine_block_id,
+        })),
+      );
+      if (insErr) return { ok: false, error: insErr.message };
+    }
+
     await supabase
       .from("main_tasks")
-      .update({ rung: newRung })
+      .update({ phase: "done", rung: startRung })
       .eq("id", item.main_task_id);
-    const { error: insErr } = await supabase.from("main_task_items").insert({
-      main_task_id: item.main_task_id,
-      phase: "recall",
-      scheduled_date: nextDate,
-      status: "pending",
-      rung: newRung,
-      routine_block_id: item.routine_block_id,
-    });
-    if (insErr) return { ok: false, error: insErr.message };
-    message = `Next review: ${nextDate} (R${newRung}).`;
+
+    message =
+      topicIds.length > 0
+        ? `Exam graded. ${topicIds.length} topic${
+            topicIds.length === 1 ? "" : "s"
+          } now on the review ladder — first review ${nextDate} (R${startRung}).`
+        : "Exam graded. Bundle finished.";
   }
 
   revalidateAll();

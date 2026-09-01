@@ -71,7 +71,7 @@ export function TodayList({
     });
   }
 
-  function gradeTopic(item: DueItem, g: Grade) {
+  function gradeTopic(item: DueItem, g: Grade | null) {
     setError(null);
     drop(item.id);
     startTransition(async () => {
@@ -193,13 +193,14 @@ function TopicRow({
   item: DueItem;
   open: boolean;
   onToggle: () => void;
-  onGrade: (g: Grade) => void;
+  onGrade: (g: Grade | null) => void;
 }) {
+  const firstPass = item.rung === 0;
   return (
     <div className="flex items-start gap-3 p-3.5">
       <button
         type="button"
-        aria-label={`Grade ${item.topicName}`}
+        aria-label={`${firstPass ? "Complete" : "Grade"} ${item.topicName}`}
         aria-expanded={open}
         onClick={onToggle}
         className={
@@ -225,7 +226,18 @@ function TopicRow({
             <span className="chip text-[var(--fail)]">overdue</span>
           )}
         </div>
-        {open && <GradeRow onPick={onGrade} />}
+        {open &&
+          (firstPass ? (
+            <button
+              type="button"
+              onClick={() => onGrade(null)}
+              className="btn btn-primary btn-sm mt-3 w-full"
+            >
+              Mark complete
+            </button>
+          ) : (
+            <GradeRow onPick={onGrade} />
+          ))}
       </div>
     </div>
   );
@@ -260,9 +272,6 @@ function PhaseRow({
               {PHASE_LABEL[phase.phase]}
             </span>
             {phase.subject && <span className="chip">{phase.subject}</span>}
-            {phase.phase === "recall" && (
-              <span className="chip">R{phase.rung}</span>
-            )}
             {phase.overdue && (
               <span className="chip text-[var(--fail)]">overdue</span>
             )}

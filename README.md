@@ -10,24 +10,30 @@ Stack: Next.js (App Router) · Supabase (Postgres + Auth) · Vercel (hosting + C
 
 | Route      | What it does |
 |------------|--------------|
-| `/`        | **Today** — topics and main-task phases due today, grouped under the routine time block they're assigned to (plus "Anytime"). Grade a topic Good/Shaky/Fail; finish a phase (Skim/Notes just "done"; Exam/Recall take a grade). Item disappears and the next occurrence is scheduled. On Saturdays also shows overdue items rolled forward from the week. Top banner shows your current/next routine block. Prev / next arrows (`/?d=YYYY-MM-DD`) step to any other day to see what's scheduled. |
-| `/tasks`   | **Plan** — the single planning surface (the old *Add* screen is folded in here). **Main tasks**: create a bundle (name + subject + topics), see its phase track (Skim → Notes → Exam → Recall), **schedule / reschedule / unschedule** its current phase inline on the card (date + optional routine block), edit its topics, delete it (topics survive). **Topics**: create a topic and put it on a date; every topic with its scheduling summary; expand to see items; move a pending item to another day; delete an item or a whole topic. Topics that belong to a main task are hidden behind a toggle. No auto-suggestions. |
+| `/`        | **Today** — topics and main-task phases due today, grouped under the routine time block they're assigned to (plus "Anytime"). A topic's **first pass** (rung 0) is just "Mark complete" — no grade; every review after that is graded Good/Shaky/Fail. Finish a phase (Skim/Notes just "done"; Exam takes a grade and hands the bundle off to per-topic review). Item disappears and the next occurrence is scheduled. On Saturdays also shows overdue items rolled forward from the week. Top banner shows your current/next routine block. Prev / next arrows (`/?d=YYYY-MM-DD`) step to any other day to see what's scheduled. |
+| `/tasks`   | **Plan** — the single planning surface (the old *Add* screen is folded in here). **Main tasks**: create a bundle (name + subject + topics), see its phase track (Skim → Notes → Exam → Done), **schedule / reschedule / unschedule** its current phase inline on the card (date + optional routine block), edit its topics, delete it (topics survive). Once the bundle is Done its topics are on their own ladder and the scheduler is replaced by a note. **Topics**: create a topic and put it on a date; every topic with its scheduling summary; expand to see items; move a pending item to another day; delete an item or a whole topic. Topics that belong to a still-running main task can't be scheduled standalone. Topics that belong to a main task are hidden behind a toggle. No auto-suggestions. |
 | `/routine` | **Routine** — editable list of daily time blocks (label + start/end + weekdays + active). |
 | `/add`     | Redirects to `/tasks` (kept for old bookmarks). |
 
-## Main tasks (Skim → Notes → Exam → Recall)
+## Main tasks (Skim → Notes → Exam → hand-off)
 
-A **main task** bundles related topics and moves through a fixed flow, one phase
-at a time for the whole bundle:
+A **main task** bundles related topics for a one-off study campaign, one phase at
+a time for the whole bundle:
 
 1. **Skim**, then **Notes** — scheduled by you, ticked done (no grade). Finishing
    one unlocks the next.
 2. **Exam** — scheduled by you, finished with a Good/Shaky/Fail grade. That grade
-   sets the starting rung (`good`→R2, `shaky`/`fail`→R1) and unlocks Recall.
-3. **Recall / Review** — the recurring phase. You schedule the first session;
-   grading it runs the spaced-repetition ladder below and auto-schedules the next.
+   seeds a starting rung (`good`→R2, `shaky`/`fail`→R1) and **hands the bundle
+   off**: every bundled topic gets its own `pending` `study_item` at that rung,
+   and the main task moves to the terminal **Done** phase.
+3. From there each topic is reviewed individually on the spaced-repetition ladder
+   below — there is no bundle-level recurring phase. The finished main task is
+   kept for history and as a topic grouping.
 
-Each phase shows its bundled topics as a checklist on Today (ticks persist).
+While a main task is still running (Skim/Notes/Exam) its topics can't be
+scheduled standalone — attaching a topic to a bundle drops its pending reviews
+(done history is kept). Each phase shows its bundled topics as a checklist on
+Today (ticks persist).
 Model: `main_tasks`, `main_task_items`, `topics.main_task_id`
 ([`supabase/migrations/0003_main_tasks.sql`](supabase/migrations/0003_main_tasks.sql));
 logic in [`src/lib/phases.ts`](src/lib/phases.ts) and
@@ -41,6 +47,10 @@ Rungs → interval after a review: `R0` same day, `R1` +1d, `R2` +3d, `R3` +7d,
 - **Good** → +2 rungs (capped at R5)
 - **Shaky** → +1 rung (capped at R5)
 - **Fail** → back to R1
+
+A topic's first occurrence (rung 0) is the **first pass**: finished with "Mark
+complete", no grade, and it moves straight to R1 (first review next day). Grading
+starts from the R1 review onward.
 
 On grading, the current item is marked `done` (kept as history — the number of
 done rows per topic is the review count shown on Today) and a new `pending` item
@@ -66,7 +76,7 @@ Friday and Saturday is empty). A manual reschedule clears `rolled_from`.
 1. Create a project at [supabase.com](https://supabase.com).
 2. SQL Editor → run every file in [`supabase/migrations/`](supabase/migrations/)
    in filename order (`0001_init.sql` → `0002_routine_link.sql` → `0003_main_tasks.sql`
-   → `0004_rolled_from.sql`).
+   → `0004_rolled_from.sql` → `0005_phase_handoff.sql`).
 3. Authentication → Users → **Add user** → create your single login (email + password).
    Authentication → Providers → Email: turn **Confirm email** off (or confirm the user manually).
 4. Project Settings → API → copy the **Project URL**, the **anon** key, and the **service_role** key.

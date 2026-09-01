@@ -20,7 +20,10 @@ import { DateBlockFields, type BlockOption } from "@/components/DateBlockFields"
 type TopicOption = { id: string; name: string; mainTaskId: string | null };
 
 function PhaseTrack({ current }: { current: string }) {
-  const idx = PHASES.indexOf(current as (typeof PHASES)[number]);
+  const done = current === "done";
+  const idx = done
+    ? PHASES.length
+    : PHASES.indexOf(current as (typeof PHASES)[number]);
   return (
     <div className="flex flex-wrap items-center gap-1">
       {PHASES.map((p, i) => (
@@ -38,6 +41,11 @@ function PhaseTrack({ current }: { current: string }) {
           {PHASE_SHORT[p]}
         </span>
       ))}
+      {done && (
+        <span className="rounded-md bg-[var(--accent)] px-1.5 py-0.5 text-[0.7rem] font-semibold text-[var(--accent-fg)]">
+          Done
+        </span>
+      )}
     </div>
   );
 }
@@ -233,9 +241,6 @@ export function MainTasksPanel({
                       {row.subject && (
                         <span className="chip">{row.subject}</span>
                       )}
-                      {row.phase === "recall" && (
-                        <span className="chip">R{row.rung}</span>
-                      )}
                     </div>
                   </div>
                   <button
@@ -261,31 +266,37 @@ export function MainTasksPanel({
                   <PhaseTrack current={row.phase} />
                 </div>
 
-                <PhaseScheduler
-                  row={row}
-                  blocks={blocks}
-                  today={today}
-                  pending={pending}
-                  onSchedule={(date, blockId) =>
-                    run(() =>
-                      scheduleMainTaskPhase({
-                        mainTaskId: row.id,
-                        date,
-                        routineBlockId: blockId || undefined,
-                      }),
-                    )
-                  }
-                  onReschedule={(itemId, date, blockId) =>
-                    run(() =>
-                      rescheduleMainTaskPhase({
-                        itemId,
-                        date,
-                        routineBlockId: blockId || undefined,
-                      }),
-                    )
-                  }
-                  onUnschedule={(itemId) => run(() => deletePhaseItem(itemId))}
-                />
+                {row.phase === "done" ? (
+                  <p className="mt-3 text-sm text-[var(--fg-muted)]">
+                    Finished — its topics are on their own review ladder now.
+                  </p>
+                ) : (
+                  <PhaseScheduler
+                    row={row}
+                    blocks={blocks}
+                    today={today}
+                    pending={pending}
+                    onSchedule={(date, blockId) =>
+                      run(() =>
+                        scheduleMainTaskPhase({
+                          mainTaskId: row.id,
+                          date,
+                          routineBlockId: blockId || undefined,
+                        }),
+                      )
+                    }
+                    onReschedule={(itemId, date, blockId) =>
+                      run(() =>
+                        rescheduleMainTaskPhase({
+                          itemId,
+                          date,
+                          routineBlockId: blockId || undefined,
+                        }),
+                      )
+                    }
+                    onUnschedule={(itemId) => run(() => deletePhaseItem(itemId))}
+                  />
+                )}
 
                 <div className="mt-3 flex flex-wrap items-center gap-1.5">
                   {row.topicNames.length === 0 ? (

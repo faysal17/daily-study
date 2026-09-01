@@ -74,7 +74,7 @@ src/
     TasksView.tsx, MainTasksPanel.tsx, RoutineEditor.tsx,
     DateBlockFields.tsx (shared date + routine-block picker),
     confirm.tsx (useConfirm hook + <dialog>), icons.tsx (inline SVG set)
-supabase/migrations/       0001_init, 0002_routine_link, 0003_main_tasks, 0004_rolled_from — hand-run, idempotent
+supabase/migrations/       0001_init, 0002_routine_link, 0003_main_tasks, 0004_rolled_from, 0005_phase_handoff — hand-run, idempotent
 ```
 
 ## Data model (Postgres)
@@ -86,9 +86,9 @@ app). The cron job uses the service-role key and bypasses RLS.
 |---|---|
 | `routine_blocks` | Daily time blocks. `days_of_week smallint[]` (0=Sun … 6=Sat), `start_time`/`end_time` (`time`), `active`. |
 | `topics` | `name`, `subject`, `main_task_id` → `main_tasks` `ON DELETE SET NULL` (topics outlive their bundle). |
-| `study_items` | One scheduled instance of a topic. `status` `pending`\|`done`, `rung` 0–5, `grade`, `routine_block_id`, `rolled_from date` (day the rollover pulled it from — see below). `topic_id` `ON DELETE CASCADE`. **Done rows are never deleted on grading — they are the review log; the count of done rows is the "reviewed N×" shown on Today.** |
-| `main_tasks` | A named bundle of topics. `phase` `skim`\|`notes`\|`exam`\|`recall`, `rung` 0–5 (recall only). |
-| `main_task_items` | One scheduled phase of a main task. `checked_topic_ids uuid[]` persists the per-phase checklist ticks; `rolled_from date` as on `study_items`. At most one `pending` row per main task at a time (enforced in `scheduleMainTaskPhase`). |
+| `study_items` | One scheduled instance of a topic. `status` `pending`\|`done`, `rung` 0–5, `grade`, `routine_block_id`, `rolled_from date` (day the rollover pulled it from — see below). `topic_id` `ON DELETE CASCADE`. **Rung 0 is the topic's first pass — finished with "Mark complete", no grade, always advances to R1.** **Done rows are never deleted on grading — they are the review log; the count of done rows is the "reviewed N×" shown on Today.** |
+| `main_tasks` | A named bundle of topics. `phase` `skim`\|`notes`\|`exam`\|`recall`\|`done` (`recall` is legacy — kept only for pre-hand-off history; nothing writes it now). `rung` 0–5 holds the exam-seeded rung; vestigial once `phase = 'done'`. |
+| `main_task_items` | One scheduled phase of a main task (`skim`/`notes`/`exam` only). `checked_topic_ids uuid[]` persists the per-phase checklist ticks; `rolled_from date` as on `study_items`. At most one `pending` row per main task at a time (enforced in `scheduleMainTaskPhase`). |
 
 ## Domain logic (keep in `src/lib`, keep pure)
 
@@ -97,15 +97,23 @@ app). The cron job uses the service-role key and bypasses RLS.
 - `good` → +2 rungs · `shaky` → +1 · `fail` → back to R1. All clamped to R5.
 
 **Main-task phase flow** — [`src/lib/phases.ts`](src/lib/phases.ts)
-- `skim → notes → exam → recall`. Skim/Notes are ticked done, no grade;
-  finishing one advances `main_tasks.phase`.
-- `exam` is graded; the grade seeds the recall rung (`good`→R2, `shaky`/`fail`→R1)
-  and flips `phase` to `recall`.
-- `recall` is the recurring phase — grading it runs the ladder and inserts the
-  next `pending` `main_task_items` row.
+- `skim → notes → exam → done`. Skim/Notes are ticked done, no grade; finishing
+  one advances `main_tasks.phase`.
+- `exam` is graded; grading it (`completePhaseItem`) **hands the bundle off**:
+  `startRung = nextRung(0, grade)` (`good`→R2, `shaky`/`fail`→R1), one fresh
+  `pending` `study_item` is inserted per bundled topic at that rung (carrying the
+  exam item's `routine_block_id`), and `phase` flips to the terminal `done`.
+- From `done` on, each topic rides the ladder individually — there is no
+  bundle-level recurring phase. `recall` and its old branch are gone.
+- Enforcement: a topic on a still-running bundle (`phase != 'done'`) can't be
+  scheduled standalone — `assignTopic` rejects it, and `createMainTask` /
+  `setMainTaskTopics` delete pending `study_items` for newly attached topics.
 
 **Grading a `study_item`** — [`gradeItem` in study.ts](src/app/actions/study.ts)
-- Marks the current row `done` + records grade + `last_reviewed_at`.
+- Signature takes `Grade | null`. **Rung 0 = first pass**: pass `null`, no grade
+  recorded, next rung is hard-coded to R1. Rung ≥ 1 requires a grade and runs the
+  ladder.
+- Marks the current row `done` + records grade (or `null`) + `last_reviewed_at`.
 - Inserts a fresh `pending` row for the same topic at the new rung's date,
   carrying the same `routine_block_id`.
 
@@ -208,5 +216,7 @@ Copy `.env.example` → `.env.local`:
   main task" rule is still enforced in `scheduleMainTaskPhase` as a backstop.
 - The topic-level **Schedule** button calls `assignTopic`, which starts a new
   item at **R0** regardless of the topic's history (same as the old Add screen).
+  It refuses a topic bundled under a main task whose `phase != 'done'` — the
+  phase flow owns that topic's schedule until the Exam hands it off.
 - `RoutineBanner` uses the browser `Notification` API for a start-of-block
   reminder; it is best-effort and client-only.
