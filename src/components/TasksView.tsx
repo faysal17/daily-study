@@ -14,16 +14,19 @@ import type { TaskRow } from "@/lib/types";
 import { ChevronIcon, PlusIcon, TrashIcon } from "@/components/icons";
 import { useConfirm } from "@/components/confirm";
 import { DateBlockFields, type BlockOption } from "@/components/DateBlockFields";
+import { SubjectField } from "@/components/SubjectField";
 
 type Filter = "all" | "active" | "done";
 
 export function TasksView({
   rows,
   blocks,
+  subjects,
   today,
 }: {
   rows: TaskRow[];
   blocks: BlockOption[];
+  subjects: string[];
   today: string;
 }) {
   const router = useRouter();
@@ -201,18 +204,11 @@ export function TasksView({
               required
             />
           </div>
-          <div>
-            <label className="field-label" htmlFor="new-topic-subject">
-              Subject <span className="text-[var(--fg-subtle)]">(optional)</span>
-            </label>
-            <input
-              id="new-topic-subject"
-              value={newSubject}
-              onChange={(e) => setNewSubject(e.target.value)}
-              className="input"
-              placeholder="e.g. Bangladesh Affairs"
-            />
-          </div>
+          <SubjectField
+            value={newSubject}
+            onChange={setNewSubject}
+            subjects={subjects}
+          />
           <DateBlockFields
             date={newDate}
             onDateChange={setNewDate}
@@ -409,9 +405,9 @@ export function TasksView({
                                 )
                               }
                               disabled={busy.has(it.id)}
-                              className="text-xs text-[var(--accent)] underline"
+                              className="btn btn-secondary btn-sm shrink-0"
                             >
-                              {rescheduling === it.id ? "close" : "move"}
+                              {rescheduling === it.id ? "Close" : "Move"}
                             </button>
                           )}
                           <button

@@ -1,11 +1,13 @@
 import Link from "next/link";
-import { addDaysISO, formatShort } from "@/lib/dates";
+import { addDaysISO } from "@/lib/dates";
 import { ChevronIcon } from "@/components/icons";
 
 /**
  * Previous / next day stepper for the Today screen. Each arrow is a plain link
  * to `/?d=YYYY-MM-DD` (or `/` for today), so day switching is a normal
- * server-rendered navigation.
+ * server-rendered navigation. The viewed date itself is already shown in the
+ * page header, so it isn't repeated here — the middle slot only holds the
+ * "Back to today" button when you've stepped away from today.
  */
 export function DayNav({ date, today }: { date: string; today: string }) {
   const hrefFor = (d: string) => (d === today ? "/" : `/?d=${d}`);
@@ -21,18 +23,11 @@ export function DayNav({ date, today }: { date: string; today: string }) {
         <ChevronIcon width={16} height={16} className="rotate-90" />
       </Link>
 
-      <div className="flex flex-col items-center leading-tight">
-        <span className="text-sm font-medium">{formatShort(date)}</span>
-        {date !== today && (
-          <Link
-            href="/"
-            prefetch
-            className="text-xs text-[var(--accent)] underline"
-          >
-            back to today
-          </Link>
-        )}
-      </div>
+      {date !== today && (
+        <Link href="/" prefetch className="btn btn-secondary btn-sm">
+          Back to today
+        </Link>
+      )}
 
       <Link
         href={hrefFor(addDaysISO(date, 1))}

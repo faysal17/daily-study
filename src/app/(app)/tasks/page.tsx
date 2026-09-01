@@ -95,6 +95,16 @@ export default async function TasksPage() {
 
   const mtNameById = new Map(mts.map((m) => [m.id, m.name]));
 
+  // Distinct subjects already in use (topics + main tasks), for the new-item
+  // forms' dropdowns so the user isn't retyping the same subject each time.
+  const subjectOptions = [
+    ...new Set(
+      [...topics, ...mts]
+        .map((r) => r.subject?.trim())
+        .filter((s): s is string => !!s),
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+
   // ---- Topic rows ----
   const byTopic = new Map<string, ItemRow[]>();
   for (const it of items) {
@@ -201,11 +211,17 @@ export default async function TasksPage() {
         rows={mainTaskRows}
         topicOptions={allTopicOptions}
         blocks={blockOptions}
+        subjects={subjectOptions}
         today={today}
       />
 
       <div className="mt-8">
-        <TasksView rows={topicRows} blocks={blockOptions} today={today} />
+        <TasksView
+          rows={topicRows}
+          blocks={blockOptions}
+          subjects={subjectOptions}
+          today={today}
+        />
       </div>
     </main>
   );

@@ -16,6 +16,7 @@ import type { MainTaskRow } from "@/lib/types";
 import { ChevronIcon, PlusIcon, TrashIcon } from "@/components/icons";
 import { useConfirm } from "@/components/confirm";
 import { DateBlockFields, type BlockOption } from "@/components/DateBlockFields";
+import { SubjectField } from "@/components/SubjectField";
 
 type TopicOption = { id: string; name: string; mainTaskId: string | null };
 
@@ -87,11 +88,13 @@ export function MainTasksPanel({
   rows,
   topicOptions,
   blocks,
+  subjects,
   today,
 }: {
   rows: MainTaskRow[];
   topicOptions: TopicOption[];
   blocks: BlockOption[];
+  subjects: string[];
   today: string;
 }) {
   const router = useRouter();
@@ -173,18 +176,11 @@ export function MainTasksPanel({
               required
             />
           </div>
-          <div>
-            <label className="field-label" htmlFor="mt-subject">
-              Subject <span className="text-[var(--fg-subtle)]">(optional)</span>
-            </label>
-            <input
-              id="mt-subject"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              className="input"
-              placeholder="e.g. Bangladesh Affairs"
-            />
-          </div>
+          <SubjectField
+            value={subject}
+            onChange={setSubject}
+            subjects={subjects}
+          />
           <div>
             <span className="field-label">Bundle existing topics</span>
             <TopicPicker
@@ -315,9 +311,9 @@ export function MainTasksPanel({
                     onClick={() =>
                       setEditing((c) => (c === row.id ? null : row.id))
                     }
-                    className="text-xs text-[var(--accent)] underline"
+                    className="btn btn-secondary btn-sm"
                   >
-                    {isEditing ? "close" : "edit topics"}
+                    {isEditing ? "Close" : "Edit topics"}
                   </button>
                 </div>
 
@@ -451,26 +447,30 @@ function PhaseScheduler({
   if (item) {
     return (
       <div className="mt-3 text-sm text-[var(--fg-muted)]">
-        <span className="font-medium text-[var(--fg)]">
-          {PHASE_LABEL[item.phase]}
-        </span>{" "}
-        scheduled for {formatShort(item.scheduledDate)}
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          disabled={pending}
-          className="ml-2 text-[var(--accent)] underline"
-        >
-          {open ? "close" : "reschedule"}
-        </button>
-        <button
-          type="button"
-          onClick={() => onUnschedule(item.id)}
-          disabled={pending}
-          className="ml-2 text-[var(--fail)] underline"
-        >
-          unschedule
-        </button>
+        <p>
+          <span className="font-medium text-[var(--fg)]">
+            {PHASE_LABEL[item.phase]}
+          </span>{" "}
+          scheduled for {formatShort(item.scheduledDate)}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            disabled={pending}
+            className="btn btn-secondary btn-sm"
+          >
+            {open ? "Close" : "Reschedule"}
+          </button>
+          <button
+            type="button"
+            onClick={() => onUnschedule(item.id)}
+            disabled={pending}
+            className="btn btn-ghost btn-sm hover:text-[var(--fail)]"
+          >
+            Unschedule
+          </button>
+        </div>
         {open && fields}
       </div>
     );
