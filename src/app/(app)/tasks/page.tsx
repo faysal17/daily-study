@@ -19,6 +19,7 @@ type ItemRow = {
   topic_id: string;
   scheduled_date: string;
   status: ItemStatus;
+  phase: Phase;
   rung: number;
   grade: Grade | null;
   routine_block_id: string | null;
@@ -47,12 +48,12 @@ export default async function TasksPage() {
   ] = await Promise.all([
     supabase
       .from("topics")
-      .select("id, name, subject, created_at, main_task_id")
+      .select("id, name, subject, phase, rung, created_at, main_task_id")
       .order("created_at", { ascending: false }),
     supabase
       .from("study_items")
       .select(
-        "id, topic_id, scheduled_date, status, rung, grade, routine_block_id",
+        "id, topic_id, scheduled_date, status, phase, rung, grade, routine_block_id",
       )
       .order("scheduled_date", { ascending: true }),
     supabase
@@ -113,6 +114,7 @@ export default async function TasksPage() {
       mainTaskName: t.main_task_id
         ? mtNameById.get(t.main_task_id) ?? null
         : null,
+      phase: t.phase,
       createdAt: t.created_at,
       pendingCount: pending.length,
       doneCount: done.length,
@@ -124,6 +126,7 @@ export default async function TasksPage() {
         id: i.id,
         scheduledDate: i.scheduled_date,
         status: i.status,
+        phase: i.phase,
         rung: i.rung,
         grade: i.grade,
         routineLabel: i.routine_block_id

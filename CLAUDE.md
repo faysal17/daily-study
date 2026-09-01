@@ -2,10 +2,11 @@
 
 # Personal Study Tracker
 
-Single-user, single-purpose study app. You assign a topic (or a main-task phase)
-to a date; when you finish it you grade **Good / Shaky / Fail** and a
-spaced-repetition ladder schedules the next occurrence. The home screen only ever
-shows *what to study today*.
+Single-user, single-purpose study app. Every topic runs a phase flow —
+**Skim → Notes → Exam → Recall**. Skim/Notes are ticked done; Exam and each
+Recall are graded **Good / Shaky / Fail**, and a spaced-repetition ladder drives
+the Recall interval. A **main task** bundles topics that run Skim/Notes/Exam
+together. The home screen only ever shows *what to study today*.
 
 Product spec / screen-by-screen behaviour lives in [`README.md`](README.md). This
 file is the map for working in the code.
@@ -61,7 +62,7 @@ src/
     api/cron/rollover/route.ts   daily overdue rollover (service-role, CRON_SECRET)
   lib/
     ladder.ts              spaced-repetition ladder — pure, single source of truth
-    phases.ts              main-task phase flow (skim -> notes -> exam -> recall) — pure
+    phases.ts              phase flow every topic + main task runs (skim -> notes -> exam -> recall) — pure
     dates.ts               ISO "YYYY-MM-DD" date math, "today" in APP_TIMEZONE
     types.ts               shared row/view types
     auth.ts                requireUser() / requireAnon()
@@ -74,7 +75,7 @@ src/
     TasksView.tsx, MainTasksPanel.tsx, RoutineEditor.tsx,
     DateBlockFields.tsx (shared date + routine-block picker),
     confirm.tsx (useConfirm hook + <dialog>), icons.tsx (inline SVG set)
-supabase/migrations/       0001_init, 0002_routine_link, 0003_main_tasks, 0004_rolled_from, 0005_phase_handoff — hand-run, idempotent
+supabase/migrations/       0001_init, 0002_routine_link, 0003_main_tasks, 0004_rolled_from, 0005_phase_handoff, 0006_topic_phases — hand-run, idempotent
 ```
 
 ## Data model (Postgres)
@@ -85,9 +86,9 @@ app). The cron job uses the service-role key and bypasses RLS.
 | Table | Purpose / notable columns |
 |---|---|
 | `routine_blocks` | Daily time blocks. `days_of_week smallint[]` (0=Sun … 6=Sat), `start_time`/`end_time` (`time`), `active`. |
-| `topics` | `name`, `subject`, `main_task_id` → `main_tasks` `ON DELETE SET NULL` (topics outlive their bundle). |
-| `study_items` | One scheduled instance of a topic. `status` `pending`\|`done`, `rung` 0–5, `grade`, `routine_block_id`, `rolled_from date` (day the rollover pulled it from — see below). `topic_id` `ON DELETE CASCADE`. **Rung 0 is the topic's first pass — finished with "Mark complete", no grade, always advances to R1.** **Done rows are never deleted on grading — they are the review log; the count of done rows is the "reviewed N×" shown on Today.** |
-| `main_tasks` | A named bundle of topics. `phase` `skim`\|`notes`\|`exam`\|`recall`\|`done` (`recall` is legacy — kept only for pre-hand-off history; nothing writes it now). `rung` 0–5 holds the exam-seeded rung; vestigial once `phase = 'done'`. |
+| `topics` | `name`, `subject`, `phase` `skim`\|`notes`\|`exam`\|`recall`, `rung` 0–5 (meaningful once `phase = 'recall'`), `main_task_id` → `main_tasks` `ON DELETE SET NULL` (topics outlive their bundle). Every topic runs the phase flow; `phase`/`rung` are the topic's own position when it isn't being driven by a bundle. |
+| `study_items` | One scheduled instance of one **phase** of a topic. `status` `pending`\|`done`, `phase`, `rung` 0–5, `grade`, `routine_block_id`, `rolled_from date` (day the rollover pulled it from — see below). `topic_id` `ON DELETE CASCADE`. **Skim/Notes/Exam do not auto-schedule the next phase; only Recall inserts the next `pending` row.** **Done rows are never deleted on grading — they are the review log; the count of done rows is the "reviewed N×" shown on Today.** |
+| `main_tasks` | A named bundle of topics that runs Skim/Notes/Exam *together*. `phase` `skim`\|`notes`\|`exam`\|`recall`\|`done` (`recall` is legacy — nothing writes it now; the Exam hands off straight to `done`). `rung` 0–5 holds the exam-seeded rung; vestigial once `phase = 'done'`. |
 | `main_task_items` | One scheduled phase of a main task (`skim`/`notes`/`exam` only). `checked_topic_ids uuid[]` persists the per-phase checklist ticks; `rolled_from date` as on `study_items`. At most one `pending` row per main task at a time (enforced in `scheduleMainTaskPhase`). |
 
 ## Domain logic (keep in `src/lib`, keep pure)
@@ -96,26 +97,25 @@ app). The cron job uses the service-role key and bypasses RLS.
 - Rungs R0–R5, intervals `[0, 1, 3, 7, 14, 21]` days after a review.
 - `good` → +2 rungs · `shaky` → +1 · `fail` → back to R1. All clamped to R5.
 
-**Main-task phase flow** — [`src/lib/phases.ts`](src/lib/phases.ts)
-- `skim → notes → exam → done`. Skim/Notes are ticked done, no grade; finishing
-  one advances `main_tasks.phase`.
-- `exam` is graded; grading it (`completePhaseItem`) **hands the bundle off**:
-  `startRung = nextRung(0, grade)` (`good`→R2, `shaky`/`fail`→R1), one fresh
-  `pending` `study_item` is inserted per bundled topic at that rung (carrying the
-  exam item's `routine_block_id`), and `phase` flips to the terminal `done`.
-- From `done` on, each topic rides the ladder individually — there is no
-  bundle-level recurring phase. `recall` and its old branch are gone.
-- Enforcement: a topic on a still-running bundle (`phase != 'done'`) can't be
-  scheduled standalone — `assignTopic` rejects it, and `createMainTask` /
-  `setMainTaskTopics` delete pending `study_items` for newly attached topics.
-
-**Grading a `study_item`** — [`gradeItem` in study.ts](src/app/actions/study.ts)
-- Signature takes `Grade | null`. **Rung 0 = first pass**: pass `null`, no grade
-  recorded, next rung is hard-coded to R1. Rung ≥ 1 requires a grade and runs the
-  ladder.
-- Marks the current row `done` + records grade (or `null`) + `last_reviewed_at`.
-- Inserts a fresh `pending` row for the same topic at the new rung's date,
-  carrying the same `routine_block_id`.
+**Phase flow** — [`src/lib/phases.ts`](src/lib/phases.ts)
+- `skim → notes → exam → recall`. Skim/Notes ticked done (no grade); Exam graded
+  and seeds the recall rung (`good`→R2, `shaky`/`fail`→R1); Recall is the
+  recurring ladder phase. `nextPhase` covers `skim`/`notes` only — `exam`'s
+  target is chosen by the caller (`recall` for a topic, `done` for a bundle).
+- **Standalone topic** — [`gradeItem` in study.ts](src/app/actions/study.ts).
+  Branches on `study_items.phase`: skim/notes advance `topics.phase`, insert
+  nothing; exam sets `topics.phase='recall'` + `topics.rung`; recall runs the
+  ladder, bumps `topics.rung`, inserts the next `pending` recall row (same
+  routine block). `assignTopic` schedules the topic's **current** phase/rung.
+- **Main task** — [`completePhaseItem` in mainTasks.ts](src/app/actions/mainTasks.ts).
+  Skim/Notes/Exam run for the whole bundle (checklist). Grading the Exam **hands
+  the bundle off**: `startRung = nextRung(0, grade)`, one `pending` recall
+  `study_item` per bundled topic at that rung, `topics.phase='recall'` for each,
+  `main_tasks.phase='done'`. No bundle-level recurring phase.
+- Enforcement: a topic on a still-running bundle (`main_tasks.phase != 'done'`)
+  can't be scheduled standalone — `assignTopic` rejects it; `createMainTask` /
+  `setMainTaskTopics` reset newly attached topics to `skim` and delete their
+  pending `study_items`.
 
 **Dates** — [`src/lib/dates.ts`](src/lib/dates.ts)
 - All scheduling math is on `"YYYY-MM-DD"` strings so it never drifts with the
@@ -214,9 +214,9 @@ Copy `.env.example` → `.env.local`:
 - `/add` is a redirect stub to `/tasks`; the Plan screen (`tasks/page.tsx` +
   `MainTasksPanel` / `TasksView`) owns all scheduling. The "one open phase per
   main task" rule is still enforced in `scheduleMainTaskPhase` as a backstop.
-- The topic-level **Schedule** button calls `assignTopic`, which starts a new
-  item at **R0** regardless of the topic's history (same as the old Add screen).
-  It refuses a topic bundled under a main task whose `phase != 'done'` — the
-  phase flow owns that topic's schedule until the Exam hands it off.
+- The topic-level **Schedule** button calls `assignTopic`, which schedules the
+  topic's **current** phase (`topics.phase`/`rung`) — a new topic starts at
+  `skim`. It refuses a topic bundled under a main task whose `phase != 'done'` —
+  the bundle owns that topic's schedule until the Exam hands it off.
 - `RoutineBanner` uses the browser `Notification` API for a start-of-block
   reminder; it is best-effort and client-only.

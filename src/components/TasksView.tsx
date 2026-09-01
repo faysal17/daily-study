@@ -9,6 +9,7 @@ import {
   rescheduleStudyItem,
 } from "@/app/actions/study";
 import { formatShort } from "@/lib/dates";
+import { PHASE_SHORT } from "@/lib/phases";
 import type { TaskRow } from "@/lib/types";
 import { ChevronIcon, PlusIcon, TrashIcon } from "@/components/icons";
 import { useConfirm } from "@/components/confirm";
@@ -297,13 +298,16 @@ export function TasksView({
                     {row.topicName}
                   </span>
                   <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                    <span className="chip text-[var(--accent)]">
+                      {PHASE_SHORT[row.phase]}
+                    </span>
                     {row.subject && <span className="chip">{row.subject}</span>}
                     {row.mainTaskName && (
                       <span className="chip text-[var(--accent)]">
                         {row.mainTaskName}
                       </span>
                     )}
-                    {row.currentRung !== null && (
+                    {row.phase === "recall" && row.currentRung !== null && (
                       <span className="chip">R{row.currentRung}</span>
                     )}
                     <span className="chip">
@@ -328,7 +332,7 @@ export function TasksView({
                   disabled={isBusy}
                   className="btn btn-secondary btn-sm shrink-0"
                 >
-                  {isScheduling ? "Close" : "Schedule"}
+                  {isScheduling ? "Close" : `Schedule ${PHASE_SHORT[row.phase]}`}
                 </button>
               )}
               <button
@@ -384,7 +388,10 @@ export function TasksView({
                             {formatShort(it.scheduledDate)}
                           </span>
                           <span className="flex flex-1 flex-wrap items-center gap-1.5">
-                            <span className="chip">R{it.rung}</span>
+                            <span className="chip capitalize">{it.phase}</span>
+                            {it.phase === "recall" && (
+                              <span className="chip">R{it.rung}</span>
+                            )}
                             <span className="chip capitalize">{it.status}</span>
                             {it.grade && (
                               <span className="chip capitalize">{it.grade}</span>

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { intervalDays, nextRung, type Grade } from "@/lib/ladder";
+import { nextPhase, phaseNeedsGrade } from "@/lib/phases";
 import { addDaysISO, todayISO } from "@/lib/dates";
 import type { ActionResult } from "@/lib/types";
 
@@ -12,9 +13,9 @@ function revalidateAll() {
 }
 
 /**
- * Assign a topic to a date, optionally into a routine time block.
- * Either an existing `topicId`, or a new topic from `newTopicName` (+ `subject`).
- * The new study_item starts at rung 0.
+ * Schedule a topic's *current phase* for a date, optionally into a routine time
+ * block. Either an existing `topicId`, or a new topic from `newTopicName`
+ * (+ `subject`) — a new topic starts at Skim (rung 0).
  */
 export async function assignTopic(input: {
   topicId?: string;
@@ -29,6 +30,8 @@ export async function assignTopic(input: {
   const routineBlockId = input.routineBlockId?.trim() || null;
   let topicId = input.topicId?.trim();
   let topicName = "";
+  let phase: string = "skim";
+  let rung = 0;
 
   if (!topicId) {
     const name = (input.newTopicName ?? "").trim();
@@ -46,10 +49,12 @@ export async function assignTopic(input: {
   } else {
     const { data } = await supabase
       .from("topics")
-      .select("name, main_task_id")
+      .select("name, phase, rung, main_task_id")
       .eq("id", topicId)
       .single();
     topicName = data?.name ?? "topic";
+    phase = data?.phase ?? "skim";
+    rung = data?.rung ?? 0;
 
     if (data?.main_task_id) {
       const { data: mt } = await supabase
@@ -71,24 +76,28 @@ export async function assignTopic(input: {
     topic_id: topicId,
     scheduled_date: date,
     status: "pending",
-    rung: 0,
+    phase,
+    rung: phase === "recall" ? rung : 0,
     routine_block_id: routineBlockId,
   });
 
   if (insErr) return { ok: false, error: insErr.message };
 
   revalidateAll();
-  return { ok: true, message: `Assigned “${topicName}” for ${date}.` };
+  return { ok: true, message: `Scheduled ${phase} for ${date}.` };
 }
 
 /**
- * Finish a due item. Marks it done and schedules the next occurrence for the
- * same topic, keeping the same routine block. History is kept: the graded row
- * stays as the review log.
+ * Finish a due study item — one phase of a topic.
  *
- * Rung 0 is the topic's *first pass* — there is nothing to recall yet, so it
- * takes no grade (`grade` is null). It just moves onto the ladder at R1, and
- * every occurrence after that is graded Good / Shaky / Fail.
+ * - **Skim / Notes**: ticked done, no grade; advances `topics.phase`.
+ * - **Exam**: graded; seeds `topics.rung` (`good`→R2, `shaky`/`fail`→R1) and
+ *   moves the topic to `recall`.
+ * - **Recall**: graded; runs the spaced-repetition ladder, bumps `topics.rung`,
+ *   and inserts the next `pending` recall row (same routine block).
+ *
+ * History is kept: the finished row stays as the review log. Skim/Notes/Exam do
+ * not auto-schedule the next phase — the topic is scheduled again from Plan.
  */
 export async function gradeItem(
   itemId: string,
@@ -98,7 +107,7 @@ export async function gradeItem(
 
   const { data: item, error } = await supabase
     .from("study_items")
-    .select("id, topic_id, rung, status, routine_block_id")
+    .select("id, topic_id, phase, rung, status, routine_block_id")
     .eq("id", itemId)
     .single();
 
@@ -108,15 +117,9 @@ export async function gradeItem(
   if (item.status === "done") {
     return { ok: true, message: "Already graded." };
   }
-
-  const firstPass = item.rung === 0;
-  if (!firstPass && !grade) {
+  if (phaseNeedsGrade(item.phase) && !grade) {
     return { ok: false, error: "Pick a grade." };
   }
-
-  const today = todayISO();
-  const newRung = firstPass ? 1 : nextRung(item.rung, grade as Grade);
-  const nextDate = addDaysISO(today, intervalDays(newRung));
 
   const { error: upErr } = await supabase
     .from("study_items")
@@ -130,10 +133,43 @@ export async function gradeItem(
 
   if (upErr) return { ok: false, error: upErr.message };
 
+  if (item.phase === "skim" || item.phase === "notes") {
+    const next = nextPhase(item.phase);
+    await supabase
+      .from("topics")
+      .update({ phase: next })
+      .eq("id", item.topic_id);
+    revalidateAll();
+    return { ok: true, message: `${next === "notes" ? "Notes" : "Exam"} unlocked — schedule it from Plan.` };
+  }
+
+  if (item.phase === "exam") {
+    const startRung = nextRung(0, grade as Grade);
+    await supabase
+      .from("topics")
+      .update({ phase: "recall", rung: startRung })
+      .eq("id", item.topic_id);
+    revalidateAll();
+    return {
+      ok: true,
+      message: `Recall unlocked at R${startRung} — schedule the first review from Plan.`,
+    };
+  }
+
+  // recall — run the ladder and queue the next review
+  const newRung = nextRung(item.rung, grade as Grade);
+  const nextDate = addDaysISO(todayISO(), intervalDays(newRung));
+
+  await supabase
+    .from("topics")
+    .update({ phase: "recall", rung: newRung })
+    .eq("id", item.topic_id);
+
   const { error: insErr } = await supabase.from("study_items").insert({
     topic_id: item.topic_id,
     scheduled_date: nextDate,
     status: "pending",
+    phase: "recall",
     rung: newRung,
     routine_block_id: item.routine_block_id,
   });
@@ -141,12 +177,7 @@ export async function gradeItem(
   if (insErr) return { ok: false, error: insErr.message };
 
   revalidateAll();
-  return {
-    ok: true,
-    message: firstPass
-      ? `First pass done. First review: ${nextDate} (R1).`
-      : `Next review: ${nextDate} (R${newRung}).`,
-  };
+  return { ok: true, message: `Next review: ${nextDate} (R${newRung}).` };
 }
 
 /**

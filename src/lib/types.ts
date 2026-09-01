@@ -23,6 +23,8 @@ export interface Topic {
   id: string;
   name: string;
   subject: string | null;
+  phase: Phase; // skim | notes | exam | recall
+  rung: number; // 0..5, meaningful once phase === "recall"
   created_at: string;
 }
 
@@ -32,6 +34,7 @@ export interface StudyItem {
   scheduled_date: string; // "YYYY-MM-DD"
   rolled_from: string | null; // day the rollover pulled it from, if any
   status: ItemStatus;
+  phase: Phase; // which phase of the topic this instance is for
   rung: number; // 0..5
   grade: Grade | null;
   routine_block_id: string | null;
@@ -45,6 +48,7 @@ export interface DueItem {
   topicId: string;
   topicName: string;
   subject: string | null;
+  phase: Phase;
   rung: number;
   scheduledDate: string;
   reviewCount: number;
@@ -134,6 +138,7 @@ export interface TaskRow {
   topicName: string;
   subject: string | null;
   mainTaskName: string | null;
+  phase: Phase;
   createdAt: string;
   pendingCount: number;
   doneCount: number;
@@ -143,6 +148,7 @@ export interface TaskRow {
     id: string;
     scheduledDate: string;
     status: ItemStatus;
+    phase: Phase;
     rung: number;
     grade: Grade | null;
     routineLabel: string | null;

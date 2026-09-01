@@ -33,14 +33,15 @@ export async function createMainTask(input: {
 
   const existing = (input.existingTopicIds ?? []).filter(Boolean);
   if (existing.length > 0) {
+    // The bundle runs these topics through Skim/Notes/Exam together, so reset
+    // each to the top of the flow and let the main task drive it.
     const { error: e } = await supabase
       .from("topics")
-      .update({ main_task_id: mt.id })
+      .update({ main_task_id: mt.id, phase: "skim", rung: 0 })
       .in("id", existing);
     if (e) return { ok: false, error: e.message };
 
-    // The phase flow now owns these topics' schedule until the Exam hands them
-    // back out. Drop any pending standalone reviews (done history is kept).
+    // Drop any pending standalone reviews (done history is kept).
     await supabase
       .from("study_items")
       .delete()
@@ -78,12 +79,6 @@ export async function setMainTaskTopics(
   const supabase = await createClient();
   const keep = topicIds.filter(Boolean);
 
-  const { data: mt } = await supabase
-    .from("main_tasks")
-    .select("phase")
-    .eq("id", mainTaskId)
-    .single();
-
   const { data: current } = await supabase
     .from("topics")
     .select("id")
@@ -100,23 +95,20 @@ export async function setMainTaskTopics(
     if (error) return { ok: false, error: error.message };
   }
   if (toAttach.length > 0) {
+    // Newly bundled topics restart at the top of the flow — the main task runs
+    // Skim/Notes/Exam for them.
     const { error } = await supabase
       .from("topics")
-      .update({ main_task_id: mainTaskId })
+      .update({ main_task_id: mainTaskId, phase: "skim", rung: 0 })
       .in("id", toAttach);
     if (error) return { ok: false, error: error.message };
 
-    // While the bundle is still running its phases it owns these topics'
-    // schedule — clear pending standalone reviews (done history is kept). Once
-    // the bundle is `done` its topics are back on their own ladder, so leave
-    // their items alone.
-    if (mt && mt.phase !== "done") {
-      await supabase
-        .from("study_items")
-        .delete()
-        .eq("status", "pending")
-        .in("topic_id", toAttach);
-    }
+    // Clear their pending standalone reviews (done history is kept).
+    await supabase
+      .from("study_items")
+      .delete()
+      .eq("status", "pending")
+      .in("topic_id", toAttach);
   }
 
   revalidateAll();
@@ -292,11 +284,18 @@ export async function completePhaseItem(
           topic_id: id,
           scheduled_date: nextDate,
           status: "pending" as const,
+          phase: "recall" as const,
           rung: startRung,
           routine_block_id: item.routine_block_id,
         })),
       );
       if (insErr) return { ok: false, error: insErr.message };
+
+      // Each topic is now on its own Recall ladder.
+      await supabase
+        .from("topics")
+        .update({ phase: "recall", rung: startRung })
+        .in("id", topicIds);
     }
 
     await supabase

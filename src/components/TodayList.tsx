@@ -195,12 +195,12 @@ function TopicRow({
   onToggle: () => void;
   onGrade: (g: Grade | null) => void;
 }) {
-  const firstPass = item.rung === 0;
+  const needsGrade = phaseNeedsGrade(item.phase);
   return (
     <div className="flex items-start gap-3 p-3.5">
       <button
         type="button"
-        aria-label={`${firstPass ? "Complete" : "Grade"} ${item.topicName}`}
+        aria-label={`${needsGrade ? "Grade" : "Finish"} ${item.topicName}`}
         aria-expanded={open}
         onClick={onToggle}
         className={
@@ -215,28 +215,31 @@ function TopicRow({
       <div className="min-w-0 flex-1">
         <p className="font-medium leading-snug">{item.topicName}</p>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-          {item.subject && <span className="chip">{item.subject}</span>}
-          <span className="chip">R{item.rung}</span>
-          <span className="chip">
-            {item.reviewCount > 0
-              ? `reviewed ${item.reviewCount}×`
-              : "first pass"}
+          <span className="chip text-[var(--accent)]">
+            {PHASE_LABEL[item.phase]}
           </span>
+          {item.subject && <span className="chip">{item.subject}</span>}
+          {item.phase === "recall" && (
+            <span className="chip">R{item.rung}</span>
+          )}
+          {item.reviewCount > 0 && (
+            <span className="chip">reviewed {item.reviewCount}×</span>
+          )}
           {item.overdue && (
             <span className="chip text-[var(--fail)]">overdue</span>
           )}
         </div>
         {open &&
-          (firstPass ? (
+          (needsGrade ? (
+            <GradeRow onPick={onGrade} />
+          ) : (
             <button
               type="button"
               onClick={() => onGrade(null)}
               className="btn btn-primary btn-sm mt-3 w-full"
             >
-              Mark complete
+              Mark {PHASE_LABEL[item.phase]} done
             </button>
-          ) : (
-            <GradeRow onPick={onGrade} />
           ))}
       </div>
     </div>

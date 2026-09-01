@@ -24,6 +24,7 @@ type ItemRow = {
   topic_id: string;
   scheduled_date: string;
   rolled_from: string | null;
+  phase: Phase;
   rung: number;
   routine_block_id: string | null;
   topics: JoinedTopic | JoinedTopic[] | null;
@@ -70,7 +71,7 @@ export default async function TodayPage({
   const itemsQ = supabase
     .from("study_items")
     .select(
-      "id, topic_id, scheduled_date, rolled_from, rung, routine_block_id, topics(name, subject)",
+      "id, topic_id, scheduled_date, rolled_from, phase, rung, routine_block_id, topics(name, subject)",
     )
     .eq("status", "pending")
     .order("scheduled_date", { ascending: true });
@@ -166,6 +167,7 @@ export default async function TodayPage({
       topicId: r.topic_id,
       topicName: t?.name ?? "(untitled topic)",
       subject: t?.subject ?? null,
+      phase: r.phase,
       rung: r.rung,
       scheduledDate: r.scheduled_date,
       reviewCount: counts.get(r.topic_id) ?? 0,
