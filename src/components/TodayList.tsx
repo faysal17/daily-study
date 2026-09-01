@@ -36,12 +36,10 @@ function GradeRow({ onPick }: { onPick: (g: Grade) => void }) {
 
 export function TodayList({
   groups: initialGroups,
-  isSaturday,
   isToday = true,
   hasRoutine,
 }: {
   groups: TodayGroup[];
-  isSaturday: boolean;
   isToday?: boolean;
   hasRoutine: boolean;
 }) {
@@ -150,7 +148,6 @@ export function TodayList({
                   {entry.kind === "topic" ? (
                     <TopicRow
                       item={entry}
-                      isSaturday={isSaturday}
                       open={openId === entry.id}
                       onToggle={() =>
                         setOpenId((c) => (c === entry.id ? null : entry.id))
@@ -160,7 +157,6 @@ export function TodayList({
                   ) : (
                     <PhaseRow
                       phase={entry}
-                      isSaturday={isSaturday}
                       open={openId === entry.id}
                       onToggle={() =>
                         setOpenId((c) => (c === entry.id ? null : entry.id))
@@ -190,13 +186,11 @@ export function TodayList({
 
 function TopicRow({
   item,
-  isSaturday,
   open,
   onToggle,
   onGrade,
 }: {
   item: DueItem;
-  isSaturday: boolean;
   open: boolean;
   onToggle: () => void;
   onGrade: (g: Grade) => void;
@@ -227,7 +221,7 @@ function TopicRow({
               ? `reviewed ${item.reviewCount}×`
               : "first pass"}
           </span>
-          {isSaturday && item.overdue && (
+          {item.overdue && (
             <span className="chip text-[var(--fail)]">overdue</span>
           )}
         </div>
@@ -239,7 +233,6 @@ function TopicRow({
 
 function PhaseRow({
   phase,
-  isSaturday,
   open,
   onToggle,
   checked,
@@ -247,7 +240,6 @@ function PhaseRow({
   onFinish,
 }: {
   phase: DuePhase;
-  isSaturday: boolean;
   open: boolean;
   onToggle: () => void;
   checked: Set<string>;
@@ -271,7 +263,7 @@ function PhaseRow({
             {phase.phase === "recall" && (
               <span className="chip">R{phase.rung}</span>
             )}
-            {isSaturday && phase.overdue && (
+            {phase.overdue && (
               <span className="chip text-[var(--fail)]">overdue</span>
             )}
           </div>

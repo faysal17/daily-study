@@ -138,6 +138,7 @@ export async function rescheduleStudyItem(input: {
     .update({
       scheduled_date: date,
       routine_block_id: input.routineBlockId?.trim() || null,
+      rolled_from: null,
     })
     .eq("id", input.itemId)
     .eq("status", "pending");

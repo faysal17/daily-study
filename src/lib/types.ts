@@ -30,6 +30,7 @@ export interface StudyItem {
   id: string;
   topic_id: string;
   scheduled_date: string; // "YYYY-MM-DD"
+  rolled_from: string | null; // day the rollover pulled it from, if any
   status: ItemStatus;
   rung: number; // 0..5
   grade: Grade | null;
@@ -65,6 +66,7 @@ export interface MainTaskItem {
   main_task_id: string;
   phase: Phase;
   scheduled_date: string;
+  rolled_from: string | null;
   status: ItemStatus;
   rung: number;
   grade: Grade | null;

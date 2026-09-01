@@ -74,7 +74,7 @@ src/
     TasksView.tsx, MainTasksPanel.tsx, RoutineEditor.tsx,
     DateBlockFields.tsx (shared date + routine-block picker),
     confirm.tsx (useConfirm hook + <dialog>), icons.tsx (inline SVG set)
-supabase/migrations/       0001_init, 0002_routine_link, 0003_main_tasks — hand-run, idempotent
+supabase/migrations/       0001_init, 0002_routine_link, 0003_main_tasks, 0004_rolled_from — hand-run, idempotent
 ```
 
 ## Data model (Postgres)
@@ -86,9 +86,9 @@ app). The cron job uses the service-role key and bypasses RLS.
 |---|---|
 | `routine_blocks` | Daily time blocks. `days_of_week smallint[]` (0=Sun … 6=Sat), `start_time`/`end_time` (`time`), `active`. |
 | `topics` | `name`, `subject`, `main_task_id` → `main_tasks` `ON DELETE SET NULL` (topics outlive their bundle). |
-| `study_items` | One scheduled instance of a topic. `status` `pending`\|`done`, `rung` 0–5, `grade`, `routine_block_id`. `topic_id` `ON DELETE CASCADE`. **Done rows are never deleted on grading — they are the review log; the count of done rows is the "reviewed N×" shown on Today.** |
+| `study_items` | One scheduled instance of a topic. `status` `pending`\|`done`, `rung` 0–5, `grade`, `routine_block_id`, `rolled_from date` (day the rollover pulled it from — see below). `topic_id` `ON DELETE CASCADE`. **Done rows are never deleted on grading — they are the review log; the count of done rows is the "reviewed N×" shown on Today.** |
 | `main_tasks` | A named bundle of topics. `phase` `skim`\|`notes`\|`exam`\|`recall`, `rung` 0–5 (recall only). |
-| `main_task_items` | One scheduled phase of a main task. `checked_topic_ids uuid[]` persists the per-phase checklist ticks. At most one `pending` row per main task at a time (enforced in `scheduleMainTaskPhase`). |
+| `main_task_items` | One scheduled phase of a main task. `checked_topic_ids uuid[]` persists the per-phase checklist ticks; `rolled_from date` as on `study_items`. At most one `pending` row per main task at a time (enforced in `scheduleMainTaskPhase`). |
 
 ## Domain logic (keep in `src/lib`, keep pure)
 
@@ -120,7 +120,11 @@ app). The cron job uses the service-role key and bypasses RLS.
 - The viewed day comes from `?d=YYYY-MM-DD` (validated with `isISODate`, falls
   back to today). [`DayNav`](src/components/DayNav.tsx) is prev/next links to
   `/?d=…`; `/` (no param) is always today.
-- Shows `pending` items/phases with `scheduled_date == selected`.
+- Shows `pending` items/phases with `scheduled_date == selected`. For a **past**
+  day it also `.or()`s in `rolled_from == selected`, so a rolled-forward item
+  still appears on the day it was originally due (and stays on its Saturday slot
+  too). Both carry the **overdue** chip (`rolled_from != null || scheduled_date <
+  today`).
 - Only when viewing **today** and it is **Saturday** does it widen to
   `<= today` (the week's rolled-forward overdue catch-up). `RoutineBanner` (live
   "now / next block") also renders only for today.
@@ -135,7 +139,10 @@ app). The cron job uses the service-role key and bypasses RLS.
 - Daily Vercel Cron (`vercel.json`, `0 1 * * *` UTC) hits `/api/cron/rollover`
   with `Authorization: Bearer <CRON_SECRET>`.
 - Moves every `pending` `study_items` / `main_task_items` row with
-  `scheduled_date < today` to `comingSaturdayISO(today)`.
+  `scheduled_date < today` to `comingSaturdayISO(today)`, and stamps
+  `rolled_from` with the date it was moved from (grouped by that date; overwritten
+  on each subsequent roll). `rescheduleStudyItem` / `rescheduleMainTaskPhase`
+  clear it; the ladder's fresh `pending` rows never set it.
 - Uses `createAdminClient()` (service role). The `/api/cron` path is excluded
   from the `proxy.ts` matcher.
 

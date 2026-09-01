@@ -52,8 +52,12 @@ is created at the new rung's date. All logic lives server-side in
 Overdue items do **not** pile up on Today. A daily Vercel Cron job
 ([`/api/cron/rollover`](src/app/api/cron/rollover/route.ts)) finds every
 `pending` item with `scheduled_date < today` and moves it to the coming Saturday
-(the *next* Saturday if today is already Saturday). Today then surfaces them only
-once that Saturday arrives.
+(the *next* Saturday if today is already Saturday), stamping `rolled_from` with
+the day it was pulled from. Today then surfaces it once that Saturday arrives —
+and the day navigation still shows it on its original `rolled_from` day, marked
+**overdue**. Completing it from any of those views clears it everywhere; the next
+review lands on whatever day the ladder computes (so if that's Friday, it shows
+Friday and Saturday is empty). A manual reschedule clears `rolled_from`.
 
 ## Setup
 
@@ -61,7 +65,8 @@ once that Saturday arrives.
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. SQL Editor → run every file in [`supabase/migrations/`](supabase/migrations/)
-   in filename order (`0001_init.sql` → `0002_routine_link.sql` → `0003_main_tasks.sql`).
+   in filename order (`0001_init.sql` → `0002_routine_link.sql` → `0003_main_tasks.sql`
+   → `0004_rolled_from.sql`).
 3. Authentication → Users → **Add user** → create your single login (email + password).
    Authentication → Providers → Email: turn **Confirm email** off (or confirm the user manually).
 4. Project Settings → API → copy the **Project URL**, the **anon** key, and the **service_role** key.

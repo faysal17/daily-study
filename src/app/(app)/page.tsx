@@ -23,6 +23,7 @@ type ItemRow = {
   id: string;
   topic_id: string;
   scheduled_date: string;
+  rolled_from: string | null;
   rung: number;
   routine_block_id: string | null;
   topics: JoinedTopic | JoinedTopic[] | null;
@@ -32,6 +33,7 @@ type PhaseRow = {
   main_task_id: string;
   phase: Phase;
   scheduled_date: string;
+  rolled_from: string | null;
   rung: number;
   routine_block_id: string | null;
   checked_topic_ids: string[] | null;
@@ -68,7 +70,7 @@ export default async function TodayPage({
   const itemsQ = supabase
     .from("study_items")
     .select(
-      "id, topic_id, scheduled_date, rung, routine_block_id, topics(name, subject)",
+      "id, topic_id, scheduled_date, rolled_from, rung, routine_block_id, topics(name, subject)",
     )
     .eq("status", "pending")
     .order("scheduled_date", { ascending: true });
@@ -76,19 +78,30 @@ export default async function TodayPage({
   const phasesQ = supabase
     .from("main_task_items")
     .select(
-      "id, main_task_id, phase, scheduled_date, rung, routine_block_id, checked_topic_ids, main_tasks(name, subject)",
+      "id, main_task_id, phase, scheduled_date, rolled_from, rung, routine_block_id, checked_topic_ids, main_tasks(name, subject)",
     )
     .eq("status", "pending")
     .order("scheduled_date", { ascending: true });
 
+  // For a past day also pull items that were originally due then but have since
+  // been rolled forward (rolled_from). Today keeps its Saturday widening; future
+  // days are an exact match.
+  const orRolled = `scheduled_date.eq.${selected},rolled_from.eq.${selected}`;
+  const scopedItems = widen
+    ? itemsQ.lte("scheduled_date", selected)
+    : selected < today
+      ? itemsQ.or(orRolled)
+      : itemsQ.eq("scheduled_date", selected);
+  const scopedPhases = widen
+    ? phasesQ.lte("scheduled_date", selected)
+    : selected < today
+      ? phasesQ.or(orRolled)
+      : phasesQ.eq("scheduled_date", selected);
+
   const [{ data: itemRows }, { data: phaseRows }, { data: blockRows }] =
     await Promise.all([
-      widen
-        ? itemsQ.lte("scheduled_date", selected)
-        : itemsQ.eq("scheduled_date", selected),
-      widen
-        ? phasesQ.lte("scheduled_date", selected)
-        : phasesQ.eq("scheduled_date", selected),
+      scopedItems,
+      scopedPhases,
       supabase
         .from("routine_blocks")
         .select("*")
@@ -156,7 +169,7 @@ export default async function TodayPage({
       rung: r.rung,
       scheduledDate: r.scheduled_date,
       reviewCount: counts.get(r.topic_id) ?? 0,
-      overdue: r.scheduled_date < today,
+      overdue: r.rolled_from != null || r.scheduled_date < today,
       routineBlockId: r.routine_block_id,
     });
   }
@@ -172,7 +185,7 @@ export default async function TodayPage({
       phase: p.phase,
       rung: p.rung,
       scheduledDate: p.scheduled_date,
-      overdue: p.scheduled_date < today,
+      overdue: p.rolled_from != null || p.scheduled_date < today,
       routineBlockId: p.routine_block_id,
       checkedTopicIds: p.checked_topic_ids ?? [],
       topics: topicsByMainTask.get(p.main_task_id) ?? [],
@@ -218,7 +231,6 @@ export default async function TodayPage({
 
       <TodayList
         groups={groups}
-        isSaturday={widen}
         isToday={isToday}
         hasRoutine={todaysBlocks.length > 0}
       />
