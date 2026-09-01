@@ -1,10 +1,13 @@
 import { NavBar, PageHeader } from "@/components/NavBar";
 import { TodayList } from "@/components/TodayList";
 import { RoutineBanner } from "@/components/RoutineBanner";
+import { DayNav } from "@/components/DayNav";
 import { createClient } from "@/lib/supabase/server";
 import {
+  addDaysISO,
   formatShort,
   hhmm,
+  isISODate,
   isSaturday,
   timeToMinutes,
   todayISO,
@@ -40,11 +43,27 @@ const one = <T,>(v: T | T[] | null): T | null =>
 
 const ANYTIME_KEY = "anytime";
 
-export default async function TodayPage() {
+/** "Today" / "Yesterday" / "Tomorrow", else the short calendar label. */
+function dayLabel(date: string, today: string): string {
+  if (date === today) return "Today";
+  if (date === addDaysISO(today, 1)) return "Tomorrow";
+  if (date === addDaysISO(today, -1)) return "Yesterday";
+  return formatShort(date);
+}
+
+export default async function TodayPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ d?: string }>;
+}) {
   const supabase = await createClient();
   const today = todayISO();
-  const saturday = isSaturday(today);
-  const weekday = weekdayOf(today);
+  const { d } = await searchParams;
+  const selected = isISODate(d) ? d : today;
+  const isToday = selected === today;
+  // The Saturday overdue catch-up only makes sense for the live "today" view.
+  const widen = isToday && isSaturday(today);
+  const weekday = weekdayOf(selected);
 
   const itemsQ = supabase
     .from("study_items")
@@ -64,10 +83,12 @@ export default async function TodayPage() {
 
   const [{ data: itemRows }, { data: phaseRows }, { data: blockRows }] =
     await Promise.all([
-      saturday ? itemsQ.lte("scheduled_date", today) : itemsQ.eq("scheduled_date", today),
-      saturday
-        ? phasesQ.lte("scheduled_date", today)
-        : phasesQ.eq("scheduled_date", today),
+      widen
+        ? itemsQ.lte("scheduled_date", selected)
+        : itemsQ.eq("scheduled_date", selected),
+      widen
+        ? phasesQ.lte("scheduled_date", selected)
+        : phasesQ.eq("scheduled_date", selected),
       supabase
         .from("routine_blocks")
         .select("*")
@@ -187,17 +208,18 @@ export default async function TodayPage() {
     <main className="page">
       <NavBar active="today" />
       <PageHeader
-        title="Today"
-        subtitle={`${formatShort(today)}${
-          totalDue > 0 ? ` · ${totalDue} to review` : ""
-        }`}
+        title={dayLabel(selected, today)}
+        subtitle={totalDue > 0 ? `${totalDue} to review` : "Nothing scheduled"}
       />
 
-      <RoutineBanner blocks={blocks} />
+      <DayNav date={selected} today={today} />
+
+      {isToday && <RoutineBanner blocks={blocks} />}
 
       <TodayList
         groups={groups}
-        isSaturday={saturday}
+        isSaturday={widen}
+        isToday={isToday}
         hasRoutine={todaysBlocks.length > 0}
       />
     </main>

@@ -22,6 +22,18 @@ export function todayISO(now: Date = new Date()): ISODate {
   }).format(now);
 }
 
+/** True if `s` is a well-formed "YYYY-MM-DD" calendar date. */
+export function isISODate(s: string | null | undefined): s is ISODate {
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return (
+    dt.getUTCFullYear() === y &&
+    dt.getUTCMonth() === m - 1 &&
+    dt.getUTCDate() === d
+  );
+}
+
 /** Add (or subtract) whole days to an ISO date, returning an ISO date. */
 export function addDaysISO(iso: ISODate, days: number): ISODate {
   const [y, m, d] = iso.split("-").map(Number);

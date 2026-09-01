@@ -37,10 +37,12 @@ function GradeRow({ onPick }: { onPick: (g: Grade) => void }) {
 export function TodayList({
   groups: initialGroups,
   isSaturday,
+  isToday = true,
   hasRoutine,
 }: {
   groups: TodayGroup[];
   isSaturday: boolean;
+  isToday?: boolean;
   hasRoutine: boolean;
 }) {
   const [removed, setRemoved] = useState<Set<string>>(new Set());
@@ -112,7 +114,11 @@ export function TodayList({
   if (totalLeft === 0 && !hasRoutine) {
     return (
       <div className="card mt-2 px-5 py-10 text-center">
-        <p className="text-[var(--fg-muted)]">Nothing due. You&apos;re clear.</p>
+        <p className="text-[var(--fg-muted)]">
+          {isToday
+            ? "Nothing due. You're clear."
+            : "Nothing scheduled for this day."}
+        </p>
         {error && <p className="mt-3 text-sm text-[var(--fail)]">{error}</p>}
       </div>
     );
@@ -173,7 +179,9 @@ export function TodayList({
 
       {totalLeft === 0 && hasRoutine && (
         <p className="px-1 text-sm text-[var(--fg-subtle)]">
-          Everything ticked off. Nice.
+          {isToday
+            ? "Everything ticked off. Nice."
+            : "Nothing assigned to this day."}
         </p>
       )}
     </div>

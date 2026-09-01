@@ -70,7 +70,7 @@ src/
       client.ts            createClient() for Client Components (browser)
       admin.ts             createAdminClient() — service role, bypasses RLS, CRON ONLY
   components/              all "use client"
-    NavBar.tsx, TodayList.tsx, RoutineBanner.tsx,
+    NavBar.tsx, TodayList.tsx, RoutineBanner.tsx, DayNav.tsx,
     TasksView.tsx, MainTasksPanel.tsx, RoutineEditor.tsx,
     DateBlockFields.tsx (shared date + routine-block picker),
     confirm.tsx (useConfirm hook + <dialog>), icons.tsx (inline SVG set)
@@ -117,13 +117,19 @@ app). The cron job uses the service-role key and bypasses RLS.
   **not** do `Date` arithmetic for scheduling.
 
 **Today page** — [`src/app/(app)/page.tsx`](src/app/(app)/page.tsx)
-- Normally shows `pending` items/phases with `scheduled_date == today`.
-- On **Saturdays** it widens to `<= today` so the week's rolled-forward overdue
-  work surfaces in one catch-up slot.
+- The viewed day comes from `?d=YYYY-MM-DD` (validated with `isISODate`, falls
+  back to today). [`DayNav`](src/components/DayNav.tsx) is prev/next links to
+  `/?d=…`; `/` (no param) is always today.
+- Shows `pending` items/phases with `scheduled_date == selected`.
+- Only when viewing **today** and it is **Saturday** does it widen to
+  `<= today` (the week's rolled-forward overdue catch-up). `RoutineBanner` (live
+  "now / next block") also renders only for today.
 - Rows are bucketed under the routine block they're assigned to (matched against
-  today's weekday) plus an "Anytime" bucket for unassigned rows.
+  the selected day's weekday) plus an "Anytime" bucket for unassigned rows.
 - Supabase nested selects come back as `T | T[] | null`; the local `one()` helper
   normalizes them.
+- Grading / finishing still works on any day; the ladder always schedules the
+  next occurrence from the real `todayISO()`, not the viewed day.
 
 **Overdue rollover** — [`src/app/api/cron/rollover/route.ts`](src/app/api/cron/rollover/route.ts)
 - Daily Vercel Cron (`vercel.json`, `0 1 * * *` UTC) hits `/api/cron/rollover`
