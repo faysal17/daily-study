@@ -1,19 +1,21 @@
 /**
- * The flow every main task moves through:
- *   skim -> notes -> exam -> (done)
- * Skim/Notes are ticked done with no grade. Exam is graded; grading it hands the
- * bundle off — every bundled topic starts its own spaced-repetition ladder (see
- * `completePhaseItem` in `@/app/actions/mainTasks`) and the main task lands in
- * the terminal `done` phase. There is no bundle-level recurring phase.
+ * The flow every topic (and every main task's bundle) moves through:
+ *   skim -> notes -> exam -> recall
+ * Skim, Notes and Exam are all ticked done with no grade. Finishing the Exam
+ * moves the topic into `recall` at `RECALL_START_RUNG`; for a main task it hands
+ * the bundle off — every bundled topic starts its own recall ladder and the main
+ * task lands in the terminal `done` phase.
  *
- * `recall` is kept in the type only for historical rows written before the
- * hand-off; nothing creates it any more.
+ * Only `recall` is graded (Good / Shaky / Fail), and only `recall` recurs.
  */
 
 export type Phase = "skim" | "notes" | "exam" | "recall" | "done";
 
 /** The phases you actively schedule, in order. */
 export const PHASES: readonly Phase[] = ["skim", "notes", "exam"];
+
+/** The rung a topic enters `recall` at once its Exam is done. */
+export const RECALL_START_RUNG = 1;
 
 export const PHASE_LABEL: Record<Phase, string> = {
   skim: "Skim",
@@ -43,7 +45,7 @@ export function nextPhase(p: Phase): Phase {
   }
 }
 
-/** Skim and Notes are ticked done with no grade; Exam needs a grade. */
+/** Only `recall` is graded — Skim, Notes and Exam are just ticked done. */
 export function phaseNeedsGrade(p: Phase): boolean {
-  return p === "exam" || p === "recall";
+  return p === "recall";
 }

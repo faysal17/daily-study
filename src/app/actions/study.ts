@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { intervalDays, nextRung, type Grade } from "@/lib/ladder";
-import { nextPhase, phaseNeedsGrade } from "@/lib/phases";
+import { RECALL_START_RUNG, nextPhase, phaseNeedsGrade } from "@/lib/phases";
 import { addDaysISO, todayISO } from "@/lib/dates";
 import type { ActionResult } from "@/lib/types";
 
@@ -91,10 +91,10 @@ export async function assignTopic(input: {
  * Finish a due study item — one phase of a topic.
  *
  * - **Skim / Notes**: ticked done, no grade; advances `topics.phase`.
- * - **Exam**: graded; seeds `topics.rung` (`good`→R2, `shaky`/`fail`→R1) and
- *   moves the topic to `recall`.
- * - **Recall**: graded; runs the spaced-repetition ladder, bumps `topics.rung`,
- *   and inserts the next `pending` recall row (same routine block).
+ * - **Exam**: ticked done, no grade; moves the topic to `recall` at
+ *   `RECALL_START_RUNG`.
+ * - **Recall**: graded Good/Shaky/Fail; runs the spaced-repetition ladder, bumps
+ *   `topics.rung`, and inserts the next `pending` recall row (same routine block).
  *
  * History is kept: the finished row stays as the review log. Skim/Notes/Exam do
  * not auto-schedule the next phase — the topic is scheduled again from Plan.
@@ -144,15 +144,14 @@ export async function gradeItem(
   }
 
   if (item.phase === "exam") {
-    const startRung = nextRung(0, grade as Grade);
     await supabase
       .from("topics")
-      .update({ phase: "recall", rung: startRung })
+      .update({ phase: "recall", rung: RECALL_START_RUNG })
       .eq("id", item.topic_id);
     revalidateAll();
     return {
       ok: true,
-      message: `Recall unlocked at R${startRung} — schedule the first review from Plan.`,
+      message: `Recall unlocked at R${RECALL_START_RUNG} — schedule the first review from Plan.`,
     };
   }
 

@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { intervalDays, nextRung, type Grade } from "@/lib/ladder";
-import { nextPhase, phaseNeedsGrade } from "@/lib/phases";
+import { intervalDays, type Grade } from "@/lib/ladder";
+import { RECALL_START_RUNG, nextPhase, phaseNeedsGrade } from "@/lib/phases";
 import { addDaysISO, todayISO } from "@/lib/dates";
 import type { ActionResult } from "@/lib/types";
 
@@ -217,10 +217,10 @@ export async function togglePhaseTopic(
 }
 
 /**
- * Complete a due phase item. Skim/Notes just finish and unlock the next phase.
- * Exam needs a grade; grading it hands the bundle off — every bundled topic
- * gets its own `pending` study_item at the exam-seeded rung (good -> R2,
- * shaky/fail -> R1) and the main task moves to the terminal `done` phase.
+ * Complete a due phase item. Skim/Notes/Exam are all ticked done, no grade.
+ * Finishing the Exam hands the bundle off — every bundled topic gets its own
+ * `pending` recall `study_item` at `RECALL_START_RUNG` and the main task moves
+ * to the terminal `done` phase. (`grade` is legacy; nothing passes it now.)
  */
 export async function completePhaseItem(
   itemId: string,
@@ -260,8 +260,8 @@ export async function completePhaseItem(
       .eq("id", item.main_task_id);
     message = `${item.phase === "skim" ? "Notes" : "Exam"} phase unlocked.`;
   } else {
-    // Exam (the only graded phase) — hand off to per-topic spaced repetition.
-    const startRung = nextRung(0, grade as Grade);
+    // Exam — hand off to per-topic spaced repetition.
+    const startRung = RECALL_START_RUNG;
     const nextDate = addDaysISO(todayISO(), intervalDays(startRung));
 
     const { data: topics } = await supabase
@@ -305,10 +305,10 @@ export async function completePhaseItem(
 
     message =
       topicIds.length > 0
-        ? `Exam graded. ${topicIds.length} topic${
+        ? `Exam done. ${topicIds.length} topic${
             topicIds.length === 1 ? "" : "s"
           } now on the review ladder — first review ${nextDate} (R${startRung}).`
-        : "Exam graded. Bundle finished.";
+        : "Exam done. Bundle finished.";
   }
 
   revalidateAll();

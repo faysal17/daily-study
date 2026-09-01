@@ -10,7 +10,7 @@ Stack: Next.js (App Router) · Supabase (Postgres + Auth) · Vercel (hosting + C
 
 | Route      | What it does |
 |------------|--------------|
-| `/`        | **Today** — topics and main-task phases due today, grouped under the routine time block they're assigned to (plus "Anytime"). Every due item is one **phase** of a topic: Skim/Notes are "Mark done" (no grade); Exam and Recall take a Good/Shaky/Fail grade. Finishing Skim/Notes/Exam clears the item (you schedule the next phase from Plan); grading Recall auto-schedules the next review. On Saturdays also shows overdue items rolled forward from the week. Top banner shows your current/next routine block. Prev / next arrows (`/?d=YYYY-MM-DD`) step to any other day to see what's scheduled. |
+| `/`        | **Today** — topics and main-task phases due today, grouped under the routine time block they're assigned to (plus "Anytime"). Every due item is one **phase** of a topic: Skim/Notes/Exam are "Mark done" (no grade); only Recall takes a Good/Shaky/Fail grade. Finishing Skim/Notes/Exam clears the item (you schedule the next phase from Plan); grading Recall auto-schedules the next review. On Saturdays also shows overdue items rolled forward from the week. Top banner shows your current/next routine block. Prev / next arrows (`/?d=YYYY-MM-DD`) step to any other day to see what's scheduled. |
 | `/tasks`   | **Plan** — the single planning surface (the old *Add* screen is folded in here). **Main tasks**: create a bundle (name + subject + topics), see its phase track (Skim → Notes → Exam → Done), **schedule / reschedule / unschedule** its current phase inline on the card (date + optional routine block), edit its topics, delete it (topics survive). Once the bundle is Done its topics are on their own ladder and the scheduler is replaced by a note. **Topics**: create a topic (starts at Skim); every topic shows its current phase; the **Schedule** button puts that phase on a date; expand to see items; move a pending item to another day; delete an item or a whole topic. Topics that belong to a still-running main task can't be scheduled standalone and are hidden behind a toggle. No auto-suggestions. |
 | `/routine` | **Routine** — editable list of daily time blocks (label + start/end + weekdays + active). |
 | `/add`     | Redirects to `/tasks` (kept for old bookmarks). |
@@ -19,21 +19,20 @@ Stack: Next.js (App Router) · Supabase (Postgres + Auth) · Vercel (hosting + C
 
 **Every topic** moves through the same four phases:
 
-1. **Skim**, then **Notes** — scheduled by you, ticked "done" (no grade).
-   Finishing one advances the topic to the next phase; you schedule it from Plan.
-2. **Exam** — scheduled by you, finished with a Good/Shaky/Fail grade. The grade
-   seeds the recall rung (`good`→R2, `shaky`/`fail`→R1) and moves the topic to
-   Recall.
+1. **Skim**, then **Notes**, then **Exam** — scheduled by you, ticked "done" (no
+   grade). Finishing one advances the topic to the next phase; you schedule it
+   from Plan.
+2. Finishing the **Exam** moves the topic into **Recall** at **R1**.
 3. **Recall** — the recurring phase. You schedule the first review; grading it
-   runs the spaced-repetition ladder below and auto-schedules the next.
+   Good/Shaky/Fail runs the spaced-repetition ladder below and auto-schedules the
+   next.
 
 A **standalone topic** runs all four phases solo. A **main task** is a bundle of
 topics that runs Skim/Notes/Exam *together* — each phase shows the bundled topics
-as a checklist on Today (ticks persist) — and then **hands off**: grading the
+as a checklist on Today (ticks persist) — and then **hands off**: finishing the
 bundle's Exam gives every bundled topic its own `pending` Recall `study_item` at
-the seeded rung and moves the main task to the terminal **Done** phase. From
-there each topic is on its own Recall ladder; there is no bundle-level recurring
-phase.
+R1 and moves the main task to the terminal **Done** phase. From there each topic
+is on its own Recall ladder; there is no bundle-level recurring phase.
 
 Attaching a topic to a bundle resets it to Skim and drops its pending standalone
 reviews (done history is kept). While a bundle is still running, its topics can't
@@ -56,8 +55,8 @@ Rungs → interval after a review: `R0` same day, `R1` +1d, `R2` +3d, `R3` +7d,
 - **Shaky** → +1 rung (capped at R5)
 - **Fail** → back to R1
 
-The ladder only runs in the **Recall** phase. Skim/Notes carry no rung; the Exam
-grade seeds the starting rung when the topic enters Recall.
+The ladder only runs in the **Recall** phase. Skim/Notes/Exam carry no rung; the
+topic enters Recall at **R1** when its Exam is done.
 
 On grading, the current item is marked `done` (kept as history — the number of
 done rows per topic is the review count shown on Today) and a new `pending` item
